@@ -43,7 +43,7 @@ export default function AuthLayout({
               <span className="gradient-text">Pando everywhere.</span>
             </h2>
             <p className="text-cme-text-muted leading-relaxed">
-              Pandocast analyzes your content's DNA, preserves your brand voice,
+              Pandocast analyzes your content&apos;s DNA, preserves your brand voice,
               and generates 18 platform-native formats — so one upload becomes
               your entire content calendar.
             </p>
