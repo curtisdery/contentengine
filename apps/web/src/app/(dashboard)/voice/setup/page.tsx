@@ -57,7 +57,7 @@ export default function VoiceSetupPage() {
             Voice Profile Setup
           </h1>
           <p className="mt-1 text-sm text-cme-text-muted">
-            Teach ContentEngine how you write and speak
+            Teach Pandocast how you write and speak
           </p>
         </div>
       </div>

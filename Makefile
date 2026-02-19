@@ -2,13 +2,13 @@
 
 # Default target
 help: ## Show this help message
-	@echo "ContentEngine Development Commands"
-	@echo "=================================="
+	@echo "Pandocast Development Commands"
+	@echo "=============================="
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
 # ---- Setup ----
 setup: ## Initial project setup (copy env, install deps, start services)
-	@echo "Setting up ContentEngine..."
+	@echo "Setting up Pandocast..."
 	@test -f .env || cp .env.example .env
 	@echo "Installing API dependencies..."
 	cd apps/api && pip install -r requirements.txt
@@ -89,6 +89,6 @@ clean: ## Remove generated files and caches
 docker-build: ## Build Docker images
 	docker compose build
 
-docker-clean: ## Remove all CME Docker resources
+docker-clean: ## Remove all Pandocast Docker resources
 	docker compose down -v --rmi local
 	@echo "Docker resources cleaned."

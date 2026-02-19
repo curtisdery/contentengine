@@ -126,7 +126,7 @@ function MultiplierScoreHero({
             )}
           >
             <Zap className="h-4 w-4 text-cme-primary" />
-            <span className="text-sm font-medium text-cme-primary">Content Multiplier Score</span>
+            <span className="text-sm font-medium text-cme-primary">Pando Multiplier Score</span>
           </div>
 
           {/* Big number */}

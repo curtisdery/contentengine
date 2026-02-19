@@ -212,7 +212,7 @@ export default function DashboardPage() {
           </span>
         </h1>
         <p className="text-cme-text-muted">
-          Here&apos;s an overview of your content engine
+          Here&apos;s an overview of your Pandocast
         </p>
       </div>
 
@@ -241,7 +241,7 @@ export default function DashboardPage() {
           </h2>
           <p className="mb-8 max-w-md text-cme-text-muted">
             Start multiplying your reach. Upload a blog post, video transcript,
-            or any content and let ContentEngine transform it for every platform.
+            or any content and let Pandocast transform it for every platform.
           </p>
           <Button size="lg" className="gap-2">
             Get Started

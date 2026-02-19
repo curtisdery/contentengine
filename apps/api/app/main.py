@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from app.api.v1.router import api_router
 from app.config import get_settings
 from app.middleware.logging import RequestLoggingMiddleware
-from app.utils.exceptions import CMEException
+from app.utils.exceptions import PandocastException
 
 settings = get_settings()
 
@@ -27,8 +27,8 @@ structlog.configure(
 )
 
 app = FastAPI(
-    title="Content Multiplier Engine API",
-    description="Transform content into 15-18+ platform-ready formats",
+    title="Pandocast API",
+    description="Upload once. Pando everywhere. Analyzes your content's DNA, preserves your brand voice, and generates 18 platform-native formats.",
     version=settings.APP_VERSION,
     docs_url="/docs" if settings.ENVIRONMENT == "development" else None,
     redoc_url="/redoc" if settings.ENVIRONMENT == "development" else None,
@@ -59,8 +59,8 @@ app.add_middleware(RequestLoggingMiddleware)
 
 
 # Exception handlers
-@app.exception_handler(CMEException)
-async def cme_exception_handler(request: Request, exc: CMEException) -> JSONResponse:
+@app.exception_handler(PandocastException)
+async def pandocast_exception_handler(request: Request, exc: PandocastException) -> JSONResponse:
     return JSONResponse(
         status_code=exc.status_code,
         content={

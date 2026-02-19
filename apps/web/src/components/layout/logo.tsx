@@ -23,7 +23,7 @@ function Logo({ collapsed = false, className, size = 'md' }: LogoProps) {
     return (
       <div className={cn('flex items-center justify-center', className)}>
         <span className={cn('gradient-text font-bold', sizeClasses[size])}>
-          C
+          P
         </span>
       </div>
     );
@@ -32,8 +32,7 @@ function Logo({ collapsed = false, className, size = 'md' }: LogoProps) {
   return (
     <div className={cn('flex flex-col', className)}>
       <div className={cn('gradient-text tracking-tight', sizeClasses[size])}>
-        <span className="font-light">Content</span>
-        <span className="font-bold">Engine</span>
+        <span className="font-bold">PANDO</span>
       </div>
       <span
         className={cn(
@@ -41,7 +40,7 @@ function Logo({ collapsed = false, className, size = 'md' }: LogoProps) {
           taglineSizes[size]
         )}
       >
-        Multiply Your Voice
+        Upload once. Pando everywhere.
       </span>
     </div>
   );

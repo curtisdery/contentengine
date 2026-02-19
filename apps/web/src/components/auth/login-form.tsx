@@ -60,7 +60,7 @@ function LoginForm() {
       <div className="space-y-2">
         <h1 className="text-3xl font-bold text-cme-text">Welcome back</h1>
         <p className="text-cme-text-muted">
-          Sign in to your ContentEngine account
+          Sign in to your Pandocast account
         </p>
       </div>
 

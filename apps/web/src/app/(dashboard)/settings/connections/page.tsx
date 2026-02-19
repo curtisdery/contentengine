@@ -367,7 +367,7 @@ export default function ConnectionsPage() {
               Secure Platform Access
             </p>
             <p className="text-xs text-cme-text-muted mt-0.5 leading-relaxed">
-              ContentEngine uses OAuth 2.0 to securely connect to your platforms.
+              Pandocast uses OAuth 2.0 to securely connect to your platforms.
               We never store your passwords. You can revoke access at any time.
               Connected platforms enable direct publishing from your content calendar.
             </p>

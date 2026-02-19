@@ -1,8 +1,8 @@
 from typing import Any
 
 
-class CMEException(Exception):
-    """Base exception for Content Multiplier Engine."""
+class PandocastException(Exception):
+    """Base exception for Pandocast."""
 
     def __init__(
         self,
@@ -16,7 +16,7 @@ class CMEException(Exception):
         super().__init__(self.message)
 
 
-class AuthenticationError(CMEException):
+class AuthenticationError(PandocastException):
     """Raised when authentication fails."""
 
     def __init__(
@@ -27,7 +27,7 @@ class AuthenticationError(CMEException):
         super().__init__(message=message, detail=detail, status_code=401)
 
 
-class AuthorizationError(CMEException):
+class AuthorizationError(PandocastException):
     """Raised when the user lacks permission."""
 
     def __init__(
@@ -38,7 +38,7 @@ class AuthorizationError(CMEException):
         super().__init__(message=message, detail=detail, status_code=403)
 
 
-class NotFoundError(CMEException):
+class NotFoundError(PandocastException):
     """Raised when a resource is not found."""
 
     def __init__(
@@ -49,7 +49,7 @@ class NotFoundError(CMEException):
         super().__init__(message=message, detail=detail, status_code=404)
 
 
-class ValidationError(CMEException):
+class ValidationError(PandocastException):
     """Raised when input validation fails."""
 
     def __init__(
@@ -60,7 +60,7 @@ class ValidationError(CMEException):
         super().__init__(message=message, detail=detail, status_code=422)
 
 
-class RateLimitError(CMEException):
+class RateLimitError(PandocastException):
     """Raised when rate limit is exceeded."""
 
     def __init__(

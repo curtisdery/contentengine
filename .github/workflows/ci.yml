@@ -15,9 +15,9 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_USER: cme_test
-          POSTGRES_PASSWORD: cme_test_password
-          POSTGRES_DB: contentengine_test
+          POSTGRES_USER: pando_test
+          POSTGRES_PASSWORD: pando_test_password
+          POSTGRES_DB: pandocast_test
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -53,7 +53,7 @@ jobs:
 
       - name: Run tests
         env:
-          DATABASE_URL: postgresql+asyncpg://cme_test:cme_test_password@localhost:5432/contentengine_test
+          DATABASE_URL: postgresql+asyncpg://pando_test:pando_test_password@localhost:5432/pandocast_test
           REDIS_URL: redis://localhost:6379/0
           JWT_SECRET: test-secret-for-ci-minimum-32-characters-long
           JWT_ALGORITHM: HS256

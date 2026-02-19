@@ -3,13 +3,13 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "contentengine-api"
+name = "pandocast-api"
 version = "0.1.0"
-description = "Content Multiplier Engine - FastAPI Backend"
+description = "Pandocast - FastAPI Backend"
 requires-python = ">=3.11"
 license = {text = "Proprietary"}
 authors = [
-    {name = "CME Team"},
+    {name = "Pandocast Team"},
 ]
 dependencies = [
     "fastapi>=0.109.0",

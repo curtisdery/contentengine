@@ -4,18 +4,18 @@ services:
   # ---- PostgreSQL ----
   postgres:
     image: postgres:16-alpine
-    container_name: cme-postgres
+    container_name: pando-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-cme}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cme_dev_password}
-      POSTGRES_DB: ${POSTGRES_DB:-contentengine}
+      POSTGRES_USER: ${POSTGRES_USER:-pando}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pando_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-pandocast}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
-      - cme_postgres_data:/var/lib/postgresql/data
+      - pando_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cme} -d ${POSTGRES_DB:-contentengine}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pando} -d ${POSTGRES_DB:-pandocast}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -23,12 +23,12 @@ services:
   # ---- Redis ----
   redis:
     image: redis:7-alpine
-    container_name: cme-redis
+    container_name: pando-redis
     restart: unless-stopped
     ports:
       - "6379:6379"
     volumes:
-      - cme_redis_data:/data
+      - pando_redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -40,12 +40,12 @@ services:
     build:
       context: ./apps/api
       dockerfile: Dockerfile
-    container_name: cme-api
+    container_name: pando-api
     restart: unless-stopped
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-cme}:${POSTGRES_PASSWORD:-cme_dev_password}@postgres:5432/${POSTGRES_DB:-contentengine}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-pando}:${POSTGRES_PASSWORD:-pando_dev_password}@postgres:5432/${POSTGRES_DB:-pandocast}
       REDIS_URL: redis://redis:6379/0
     ports:
       - "8000:8000"
@@ -63,7 +63,7 @@ services:
     build:
       context: ./apps/web
       dockerfile: Dockerfile
-    container_name: cme-web
+    container_name: pando-web
     restart: unless-stopped
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8000
@@ -76,5 +76,5 @@ services:
     command: npm run dev
 
 volumes:
-  cme_postgres_data:
-  cme_redis_data:
+  pando_postgres_data:
+  pando_redis_data:

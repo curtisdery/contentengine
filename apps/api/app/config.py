@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     # Database
-    DATABASE_URL: str = "postgresql+asyncpg://cme:cme_dev_password@localhost:5432/contentengine"
+    DATABASE_URL: str = "postgresql+asyncpg://pando:pando_dev_password@localhost:5432/pandocast"
 
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"

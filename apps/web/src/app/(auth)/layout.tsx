@@ -38,13 +38,14 @@ export default function AuthLayout({
           <Logo size="lg" />
           <div className="max-w-md space-y-4 mt-8">
             <h2 className="text-2xl font-semibold text-cme-text">
-              One piece of content.
+              Upload once.
               <br />
-              <span className="gradient-text">Infinite possibilities.</span>
+              <span className="gradient-text">Pando everywhere.</span>
             </h2>
             <p className="text-cme-text-muted leading-relaxed">
-              Upload once and let ContentEngine transform your content into
-              optimized posts for every platform. Save hours, reach millions.
+              Pandocast analyzes your content's DNA, preserves your brand voice,
+              and generates 18 platform-native formats — so one upload becomes
+              your entire content calendar.
             </p>
           </div>
 

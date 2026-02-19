@@ -1,7 +1,7 @@
-# ContentEngine — CLAUDE.md
+# Pandocast — CLAUDE.md
 
 ## Project Overview
-Content Multiplier Engine (CME) — a platform that lets solo content creators upload one piece of content and receive 15-18+ platform-ready formats back with intelligent scheduling, native analytics, and brand voice consistency.
+Pandocast (PANDO) — a platform that lets solo content creators upload one piece of content and receive 18+ platform-ready formats back with intelligent scheduling, native analytics, and brand voice consistency. Upload once. Pando everywhere.
 
 ## Architecture
 Monorepo with two apps:

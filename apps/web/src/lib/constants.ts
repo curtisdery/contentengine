@@ -1,6 +1,6 @@
-export const APP_NAME = 'ContentEngine';
-export const APP_TAGLINE = 'Multiply Your Voice';
-export const APP_DESCRIPTION = 'ContentEngine — Multiply Your Content';
+export const APP_NAME = 'Pandocast';
+export const APP_TAGLINE = 'Upload once. Pando everywhere.';
+export const APP_DESCRIPTION = 'Pandocast — Upload once. Pando everywhere.';
 
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';

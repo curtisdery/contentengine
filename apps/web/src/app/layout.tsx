@@ -3,9 +3,9 @@ import { Toaster } from '@/components/ui/toaster';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'ContentEngine — Multiply Your Content',
+  title: 'Pandocast — Upload once. Pando everywhere.',
   description:
-    'ContentEngine is a futuristic content multiplier platform that helps creators repurpose and distribute their content across all platforms.',
+    'Pandocast analyzes your content\'s DNA, preserves your brand voice, and generates 18 platform-native formats — so one upload becomes your entire content calendar.',
   icons: {
     icon: '/favicon.ico',
   },

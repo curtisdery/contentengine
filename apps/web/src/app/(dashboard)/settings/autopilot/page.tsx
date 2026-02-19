@@ -452,7 +452,7 @@ export default function AutopilotPage() {
             <span className="gradient-text">Autopilot</span>
           </h1>
           <p className="text-cme-text-muted">
-            Let ContentEngine publish for you
+            Let Pandocast publish for you
           </p>
         </div>
       </div>

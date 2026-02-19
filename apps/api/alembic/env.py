@@ -35,7 +35,7 @@ if config.config_file_name is not None:
 # Set the SQLAlchemy URL from environment variable
 database_url = os.environ.get(
     "DATABASE_URL",
-    "postgresql+asyncpg://cme:cme_dev_password@localhost:5432/contentengine",
+    "postgresql+asyncpg://pando:pando_dev_password@localhost:5432/pandocast",
 )
 config.set_main_option("sqlalchemy.url", database_url)
 
