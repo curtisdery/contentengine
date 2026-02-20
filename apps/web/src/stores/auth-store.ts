@@ -32,7 +32,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ isLoading: true });
     try {
       const response = await apiClient.post<LoginResponse>(
-        '/api/auth/login',
+        '/api/v1/auth/login',
         { email, password },
         true
       );
@@ -58,7 +58,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ isLoading: true });
     try {
       const response = await apiClient.post<SignupResponse>(
-        '/api/auth/signup',
+        '/api/v1/auth/signup',
         { email, password, full_name: fullName },
         true
       );
@@ -82,7 +82,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   logout: async () => {
     try {
-      await apiClient.post('/api/auth/logout');
+      await apiClient.post('/api/v1/auth/logout');
     } catch {
       // Proceed with logout even if API call fails
     }
@@ -106,7 +106,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     try {
       const response = await apiClient.post<RefreshResponse>(
-        '/api/auth/refresh',
+        '/api/v1/auth/refresh',
         { refresh_token: refreshToken },
         true
       );
@@ -151,7 +151,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ accessToken, refreshToken });
 
     try {
-      const user = await apiClient.get<User>('/api/auth/me');
+      const user = await apiClient.get<User>('/api/v1/auth/me');
       set({
         user,
         isAuthenticated: true,
@@ -162,7 +162,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (refreshToken) {
         try {
           const response = await apiClient.post<RefreshResponse>(
-            '/api/auth/refresh',
+            '/api/v1/auth/refresh',
             { refresh_token: refreshToken },
             true
           );
@@ -173,7 +173,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             refreshToken: response.refresh_token,
           });
 
-          const user = await apiClient.get<User>('/api/auth/me');
+          const user = await apiClient.get<User>('/api/v1/auth/me');
           set({
             user,
             isAuthenticated: true,

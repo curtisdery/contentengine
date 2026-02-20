@@ -50,8 +50,8 @@ function SignupForm() {
       return;
     }
 
-    if (password.length < 8) {
-      setFormError('Password must be at least 8 characters');
+    if (password.length < 12) {
+      setFormError('Password must be at least 12 characters');
       return;
     }
 
