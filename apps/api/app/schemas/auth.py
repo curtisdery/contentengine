@@ -1,35 +1,23 @@
 import uuid
 from datetime import datetime, date
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field
 
 
-class SignupRequest(BaseModel):
-    email: EmailStr
-    password: str = Field(..., min_length=12, description="Minimum 12 characters")
+class FirebaseSignupRequest(BaseModel):
+    firebase_token: str
     full_name: str = Field(..., min_length=1, max_length=255)
 
 
-class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str
-
-
-class RefreshTokenRequest(BaseModel):
-    refresh_token: str
-
-
-class AuthTokenResponse(BaseModel):
-    access_token: str
-    refresh_token: str
-    token_type: str = "bearer"
-    user: "UserResponse"
+class FCMTokenRequest(BaseModel):
+    fcm_token: str = Field(..., min_length=1, max_length=500)
 
 
 class UserResponse(BaseModel):
     id: uuid.UUID
     email: str
     full_name: str
+    firebase_uid: str | None = None
     avatar_url: str | None = None
     date_of_birth: date | None = None
     email_verified: bool
@@ -41,18 +29,5 @@ class UserResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class ForgotPasswordRequest(BaseModel):
-    email: EmailStr
-
-
-class ResetPasswordRequest(BaseModel):
-    token: str
-    password: str = Field(..., min_length=12, description="Minimum 12 characters")
-
-
 class MessageResponse(BaseModel):
     message: str
-
-
-# Rebuild model to resolve forward reference
-AuthTokenResponse.model_rebuild()

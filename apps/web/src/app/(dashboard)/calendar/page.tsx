@@ -284,6 +284,8 @@ export default function CalendarPage() {
         `/api/v1/calendar/events/${eventId}/publish`
       );
       showSuccess('Publishing started', 'Your content is being published now.');
+      const { trackEvent } = await import('@/lib/analytics');
+      trackEvent('content_published');
       await fetchData();
       setSelectedEvent(null);
     } catch (err) {

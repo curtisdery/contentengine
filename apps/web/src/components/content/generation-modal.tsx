@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PlatformSelector } from '@/components/content/platform-selector';
 import { getPlatformConfig } from '@/components/content/platform-badge';
 import { apiClient, ApiClientError } from '@/lib/api';
+import { trackEvent } from '@/lib/analytics';
 import { useToast } from '@/hooks/use-toast';
 import type {
   VoiceProfileResponse,
@@ -118,6 +119,7 @@ function GenerationModal({ contentId, isOpen, onClose, onSuccess }: GenerationMo
       );
 
       setStep('complete');
+      trackEvent('content_generated', { platforms_count: selectedPlatforms.length });
 
       // Brief pause to show success, then navigate
       setTimeout(() => {

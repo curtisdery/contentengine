@@ -25,6 +25,7 @@ from app.schemas.calendar import (
     ScheduledEventResponse,
     ScheduleOutputRequest,
 )
+from app.services.notifications import send_content_published_notification
 from app.services.publisher import PublisherRegistry
 from app.services.scheduler import SchedulerService
 from app.utils.exceptions import NotFoundError, ValidationError
@@ -520,6 +521,17 @@ async def publish_now(
                 event_id=event_id,
                 platform_post_id=publish_result.get("post_id"),
             )
+            # Send push notification
+            cu_result_notify = await db.execute(
+                select(ContentUpload).where(ContentUpload.id == output.content_upload_id)
+            )
+            cu_notify = cu_result_notify.scalar_one_or_none()
+            if cu_notify:
+                send_content_published_notification(
+                    user=current_user,
+                    content_title=cu_notify.title,
+                    platform=event.platform_id,
+                )
         else:
             event = await scheduler_service.mark_failed(
                 db=db,

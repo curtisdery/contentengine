@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     STRIPE_PRICE_GROWTH: str = "price_growth_placeholder"
     STRIPE_PRICE_PRO: str = "price_pro_placeholder"
 
+    # Firebase
+    FIREBASE_SERVICE_ACCOUNT_BASE64: str = ""
+    FIREBASE_STORAGE_BUCKET: str = ""
+
     # AI
     ANTHROPIC_API_KEY: str = ""
 

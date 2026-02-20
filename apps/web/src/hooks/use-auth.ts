@@ -13,8 +13,11 @@ export function useAuth() {
     isAuthenticated: store.isAuthenticated,
     isLoading: store.isLoading,
     login: store.login,
+    loginWithGoogle: store.loginWithGoogle,
     signup: store.signup,
+    signupWithGoogle: store.signupWithGoogle,
     logout: store.logout,
+    resetPassword: store.resetPassword,
   };
 }
 

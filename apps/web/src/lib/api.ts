@@ -1,4 +1,5 @@
-import { API_BASE_URL, STORAGE_KEYS } from './constants';
+import { auth } from './firebase';
+import { API_BASE_URL } from './constants';
 
 class ApiClientError extends Error {
   status: number;
@@ -19,26 +20,10 @@ class ApiClient {
     this.baseUrl = baseUrl;
   }
 
-  private getAccessToken(): string | null {
-    if (typeof window === 'undefined') return null;
-    return localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
-  }
-
-  private getRefreshToken(): string | null {
-    if (typeof window === 'undefined') return null;
-    return localStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
-  }
-
-  private setTokens(access: string, refresh: string): void {
-    if (typeof window === 'undefined') return;
-    localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, access);
-    localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refresh);
-  }
-
-  private clearTokens(): void {
-    if (typeof window === 'undefined') return;
-    localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
-    localStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
+  private async getAccessToken(): Promise<string | null> {
+    const currentUser = auth.currentUser;
+    if (!currentUser) return null;
+    return currentUser.getIdToken();
   }
 
   private async handleResponse<T>(response: Response): Promise<T> {
@@ -70,9 +55,11 @@ class ApiClient {
       'Content-Type': 'application/json',
     };
 
-    const token = this.getAccessToken();
-    if (token && !skipAuth) {
-      headers['Authorization'] = `Bearer ${token}`;
+    if (!skipAuth) {
+      const token = await this.getAccessToken();
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
     }
 
     const config: RequestInit = {
@@ -84,46 +71,8 @@ class ApiClient {
       config.body = JSON.stringify(body);
     }
 
-    let response = await fetch(`${this.baseUrl}${path}`, config);
-
-    if (response.status === 401 && !skipAuth) {
-      const refreshed = await this.attemptTokenRefresh();
-      if (refreshed) {
-        const newToken = this.getAccessToken();
-        headers['Authorization'] = `Bearer ${newToken}`;
-        config.headers = headers;
-        response = await fetch(`${this.baseUrl}${path}`, config);
-      } else {
-        this.clearTokens();
-        if (typeof window !== 'undefined') {
-          window.location.href = '/login';
-        }
-        throw new ApiClientError(401, 'Session expired. Please log in again.');
-      }
-    }
-
+    const response = await fetch(`${this.baseUrl}${path}`, config);
     return this.handleResponse<T>(response);
-  }
-
-  private async attemptTokenRefresh(): Promise<boolean> {
-    const refreshToken = this.getRefreshToken();
-    if (!refreshToken) return false;
-
-    try {
-      const response = await fetch(`${this.baseUrl}/api/v1/auth/refresh`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh_token: refreshToken }),
-      });
-
-      if (!response.ok) return false;
-
-      const data = await response.json();
-      this.setTokens(data.access_token, data.refresh_token);
-      return true;
-    } catch {
-      return false;
-    }
   }
 
   async get<T>(path: string, skipAuth = false): Promise<T> {

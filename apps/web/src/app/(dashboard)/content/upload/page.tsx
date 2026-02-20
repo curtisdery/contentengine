@@ -2,21 +2,27 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Sparkles, Loader2 } from 'lucide-react';
+import { ArrowLeft, Sparkles, Loader2, FileText, Upload } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { UploadTabs } from '@/components/content/upload-tabs';
+import { FileUpload } from '@/components/content/file-upload';
 import { useToast } from '@/hooks/use-toast';
 import { apiClient, ApiClientError } from '@/lib/api';
 import { ROUTES } from '@/lib/constants';
+import { trackEvent } from '@/lib/analytics';
+import { cn } from '@/lib/utils';
 import type { ContentUploadRequest, ContentUploadResponse } from '@/types/api';
+
+type UploadMode = 'paste' | 'file';
 
 export default function ContentUploadPage() {
   const router = useRouter();
   const { error: showError } = useToast();
   const [isLoading, setIsLoading] = React.useState(false);
+  const [uploadMode, setUploadMode] = React.useState<UploadMode>('paste');
   const [analysisStatus, setAnalysisStatus] = React.useState<string | null>(
     null
   );
@@ -32,12 +38,15 @@ export default function ContentUploadPage() {
         data
       );
 
-      setAnalysisStatus('Analyzing your content...');
+      // Step 2: Trigger analysis (only if raw_content was provided)
+      if (data.raw_content) {
+        setAnalysisStatus('Analyzing your content...');
+        await apiClient.post<ContentUploadResponse>(
+          `/api/v1/content/${uploadResponse.id}/analyze`
+        );
+      }
 
-      // Step 2: Trigger analysis
-      await apiClient.post<ContentUploadResponse>(
-        `/api/v1/content/${uploadResponse.id}/analyze`
-      );
+      trackEvent('content_upload', { content_type: data.content_type });
 
       // Redirect to detail page
       router.push(`${ROUTES.CONTENT_DETAIL}/${uploadResponse.id}`);
@@ -103,9 +112,33 @@ export default function ContentUploadPage() {
         </div>
       </div>
 
+      {/* Upload mode toggle */}
+      <div className="flex gap-2">
+        <Button
+          variant={uploadMode === 'paste' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setUploadMode('paste')}
+        >
+          <FileText className="mr-2 h-4 w-4" />
+          Paste Content
+        </Button>
+        <Button
+          variant={uploadMode === 'file' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setUploadMode('file')}
+        >
+          <Upload className="mr-2 h-4 w-4" />
+          File Upload
+        </Button>
+      </div>
+
       {/* Upload Card */}
       <Card className="overflow-hidden">
-        <UploadTabs onUpload={handleUpload} isLoading={isLoading} />
+        {uploadMode === 'paste' ? (
+          <UploadTabs onUpload={handleUpload} isLoading={isLoading} />
+        ) : (
+          <FileUpload onUpload={handleUpload} isLoading={isLoading} />
+        )}
       </Card>
     </div>
   );

@@ -5,11 +5,12 @@ import Link from 'next/link';
 import { Mail, ArrowLeft, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { apiClient } from '@/lib/api';
+import { useAuthStore } from '@/stores/auth-store';
 import { ROUTES } from '@/lib/constants';
 import { Logo } from '@/components/layout/logo';
 
 export default function ForgotPasswordPage() {
+  const { resetPassword } = useAuthStore();
   const [email, setEmail] = React.useState('');
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [formError, setFormError] = React.useState('');
@@ -27,11 +28,7 @@ export default function ForgotPasswordPage() {
     setIsSubmitting(true);
 
     try {
-      await apiClient.post(
-        '/api/v1/auth/forgot-password',
-        { email },
-        true
-      );
+      await resetPassword(email);
       setSubmitted(true);
     } catch {
       // Always show success to prevent email enumeration

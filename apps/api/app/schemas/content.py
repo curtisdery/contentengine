@@ -10,8 +10,19 @@ from pydantic import BaseModel, Field
 class ContentUploadRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=500)
     content_type: str = Field(..., pattern="^(blog|video_transcript|podcast_transcript)$")
-    raw_content: str = Field(..., min_length=10)
+    raw_content: Optional[str] = Field(None, min_length=10)
+    storage_path: Optional[str] = None
     source_url: Optional[str] = None
+
+
+class UploadURLRequest(BaseModel):
+    file_name: str = Field(..., min_length=1, max_length=500)
+    content_type: str = Field(..., min_length=1, max_length=100)
+
+
+class UploadURLResponse(BaseModel):
+    upload_url: str
+    storage_path: str
 
 
 class ContentDNAResponse(BaseModel):
@@ -30,6 +41,7 @@ class ContentUploadResponse(BaseModel):
     content_type: str
     status: str
     content_dna: Optional[dict] = None
+    storage_path: Optional[str] = None
     source_url: Optional[str] = None
     created_at: datetime
     updated_at: datetime

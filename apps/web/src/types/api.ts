@@ -1,45 +1,6 @@
-import { User } from './user';
-
 export interface ApiError {
   detail: string;
   status_code: number;
-}
-
-export interface AuthTokens {
-  access_token: string;
-  refresh_token: string;
-  token_type: string;
-}
-
-export interface LoginRequest {
-  email: string;
-  password: string;
-}
-
-export interface SignupRequest {
-  email: string;
-  password: string;
-  full_name: string;
-}
-
-export interface LoginResponse {
-  user: User;
-  access_token: string;
-  refresh_token: string;
-  token_type: string;
-}
-
-export interface SignupResponse {
-  user: User;
-  access_token: string;
-  refresh_token: string;
-  token_type: string;
-}
-
-export interface RefreshResponse {
-  access_token: string;
-  refresh_token: string;
-  token_type: string;
 }
 
 export interface DashboardStats {
@@ -58,8 +19,14 @@ export interface ApiResponse<T> {
 export interface ContentUploadRequest {
   title: string;
   content_type: 'blog' | 'video_transcript' | 'podcast_transcript';
-  raw_content: string;
+  raw_content?: string;
+  storage_path?: string;
   source_url?: string;
+}
+
+export interface UploadURLResponse {
+  upload_url: string;
+  storage_path: string;
 }
 
 export interface ContentDNA {

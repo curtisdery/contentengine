@@ -1,82 +1,130 @@
 'use client';
 
 import { create } from 'zustand';
-import { apiClient, ApiClientError } from '@/lib/api';
-import { storeTokens, clearStoredTokens, getStoredTokens } from '@/lib/auth';
+import {
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signInWithPopup,
+  GoogleAuthProvider,
+  signOut,
+  sendPasswordResetEmail,
+  onIdTokenChanged,
+  updateProfile,
+} from 'firebase/auth';
+import { auth } from '@/lib/firebase';
+import { apiClient } from '@/lib/api';
+import { trackEvent } from '@/lib/analytics';
 import type { User } from '@/types/user';
-import type { LoginResponse, SignupResponse, RefreshResponse } from '@/types/api';
+
+const googleProvider = new GoogleAuthProvider();
 
 interface AuthState {
   user: User | null;
-  accessToken: string | null;
-  refreshToken: string | null;
   isLoading: boolean;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
+  loginWithGoogle: () => Promise<void>;
   signup: (email: string, password: string, fullName: string) => Promise<void>;
+  signupWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
-  refreshAuth: () => Promise<void>;
-  setTokens: (access: string, refresh: string) => void;
+  resetPassword: (email: string) => Promise<void>;
   clearAuth: () => void;
-  initialize: () => Promise<void>;
+  initialize: () => (() => void);
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
-  accessToken: null,
-  refreshToken: null,
   isLoading: true,
   isAuthenticated: false,
 
   login: async (email: string, password: string) => {
     set({ isLoading: true });
     try {
-      const response = await apiClient.post<LoginResponse>(
-        '/api/v1/auth/login',
-        { email, password },
-        true
-      );
-
-      storeTokens(response.access_token, response.refresh_token);
-      set({
-        user: response.user,
-        accessToken: response.access_token,
-        refreshToken: response.refresh_token,
-        isAuthenticated: true,
-        isLoading: false,
-      });
-    } catch (error) {
+      await signInWithEmailAndPassword(auth, email, password);
+      trackEvent('login', { method: 'email' });
+      // The onIdTokenChanged listener will handle fetching user data
+    } catch (error: unknown) {
       set({ isLoading: false });
-      if (error instanceof ApiClientError) {
-        throw new Error(error.detail);
+      const firebaseError = error as { code?: string };
+      if (firebaseError.code === 'auth/invalid-credential' || firebaseError.code === 'auth/wrong-password') {
+        throw new Error('Invalid email or password');
+      }
+      if (firebaseError.code === 'auth/user-not-found') {
+        throw new Error('No account found with this email');
+      }
+      if (firebaseError.code === 'auth/too-many-requests') {
+        throw new Error('Too many failed attempts. Please try again later.');
       }
       throw new Error('Failed to log in. Please try again.');
+    }
+  },
+
+  loginWithGoogle: async () => {
+    set({ isLoading: true });
+    try {
+      await signInWithPopup(auth, googleProvider);
+      trackEvent('login', { method: 'google' });
+      // The onIdTokenChanged listener will handle fetching user data
+    } catch (error: unknown) {
+      set({ isLoading: false });
+      const firebaseError = error as { code?: string };
+      if (firebaseError.code === 'auth/popup-closed-by-user') {
+        return; // User cancelled — not an error
+      }
+      throw new Error('Google sign-in failed. Please try again.');
     }
   },
 
   signup: async (email: string, password: string, fullName: string) => {
     set({ isLoading: true });
     try {
-      const response = await apiClient.post<SignupResponse>(
+      const credential = await createUserWithEmailAndPassword(auth, email, password);
+      await updateProfile(credential.user, { displayName: fullName });
+
+      // Sync with backend
+      const idToken = await credential.user.getIdToken();
+      await apiClient.post(
         '/api/v1/auth/signup',
-        { email, password, full_name: fullName },
+        { firebase_token: idToken, full_name: fullName },
         true
       );
-
-      storeTokens(response.access_token, response.refresh_token);
-      set({
-        user: response.user,
-        accessToken: response.access_token,
-        refreshToken: response.refresh_token,
-        isAuthenticated: true,
-        isLoading: false,
-      });
-    } catch (error) {
+      trackEvent('sign_up', { method: 'email' });
+      // The onIdTokenChanged listener will handle setting user state
+    } catch (error: unknown) {
       set({ isLoading: false });
-      if (error instanceof ApiClientError) {
-        throw new Error(error.detail);
+      const firebaseError = error as { code?: string };
+      if (firebaseError.code === 'auth/email-already-in-use') {
+        throw new Error('An account with this email already exists');
+      }
+      if (firebaseError.code === 'auth/weak-password') {
+        throw new Error('Password is too weak');
       }
       throw new Error('Failed to create account. Please try again.');
+    }
+  },
+
+  signupWithGoogle: async () => {
+    set({ isLoading: true });
+    try {
+      const credential = await signInWithPopup(auth, googleProvider);
+
+      // Sync with backend
+      const idToken = await credential.user.getIdToken();
+      const displayName = credential.user.displayName || credential.user.email?.split('@')[0] || 'User';
+      await apiClient.post(
+        '/api/v1/auth/signup',
+        { firebase_token: idToken, full_name: displayName },
+        true
+      );
+      trackEvent('sign_up', { method: 'google' });
+      // The onIdTokenChanged listener will handle setting user state
+    } catch (error: unknown) {
+      set({ isLoading: false });
+      const firebaseError = error as { code?: string };
+      if (firebaseError.code === 'auth/popup-closed-by-user') {
+        return;
+      }
+      throw new Error('Google sign-up failed. Please try again.');
     }
   },
 
@@ -87,92 +135,30 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // Proceed with logout even if API call fails
     }
 
-    clearStoredTokens();
+    await signOut(auth);
     set({
       user: null,
-      accessToken: null,
-      refreshToken: null,
       isAuthenticated: false,
       isLoading: false,
     });
   },
 
-  refreshAuth: async () => {
-    const { refreshToken } = get();
-    if (!refreshToken) {
-      get().clearAuth();
-      return;
-    }
-
-    try {
-      const response = await apiClient.post<RefreshResponse>(
-        '/api/v1/auth/refresh',
-        { refresh_token: refreshToken },
-        true
-      );
-
-      storeTokens(response.access_token, response.refresh_token);
-      set({
-        accessToken: response.access_token,
-        refreshToken: response.refresh_token,
-      });
-    } catch {
-      get().clearAuth();
-    }
-  },
-
-  setTokens: (access: string, refresh: string) => {
-    storeTokens(access, refresh);
-    set({
-      accessToken: access,
-      refreshToken: refresh,
-    });
+  resetPassword: async (email: string) => {
+    await sendPasswordResetEmail(auth, email);
   },
 
   clearAuth: () => {
-    clearStoredTokens();
     set({
       user: null,
-      accessToken: null,
-      refreshToken: null,
       isAuthenticated: false,
       isLoading: false,
     });
   },
 
-  initialize: async () => {
-    const { accessToken, refreshToken } = getStoredTokens();
-
-    if (!accessToken) {
-      set({ isLoading: false, isAuthenticated: false });
-      return;
-    }
-
-    set({ accessToken, refreshToken });
-
-    try {
-      const user = await apiClient.get<User>('/api/v1/auth/me');
-      set({
-        user,
-        isAuthenticated: true,
-        isLoading: false,
-      });
-    } catch {
-      // Token might be expired, try refresh
-      if (refreshToken) {
+  initialize: () => {
+    const unsubscribe = onIdTokenChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
         try {
-          const response = await apiClient.post<RefreshResponse>(
-            '/api/v1/auth/refresh',
-            { refresh_token: refreshToken },
-            true
-          );
-
-          storeTokens(response.access_token, response.refresh_token);
-          set({
-            accessToken: response.access_token,
-            refreshToken: response.refresh_token,
-          });
-
           const user = await apiClient.get<User>('/api/v1/auth/me');
           set({
             user,
@@ -180,25 +166,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             isLoading: false,
           });
         } catch {
-          clearStoredTokens();
           set({
             user: null,
-            accessToken: null,
-            refreshToken: null,
             isAuthenticated: false,
             isLoading: false,
           });
         }
       } else {
-        clearStoredTokens();
         set({
           user: null,
-          accessToken: null,
-          refreshToken: null,
           isAuthenticated: false,
           isLoading: false,
         });
       }
-    }
+    });
+
+    return unsubscribe;
   },
 }));

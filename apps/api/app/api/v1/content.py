@@ -16,9 +16,12 @@ from app.schemas.content import (
     ContentUpdateRequest,
     ContentUploadRequest,
     ContentUploadResponse,
+    UploadURLRequest,
+    UploadURLResponse,
 )
 from app.services.ingestion import IngestionService
-from app.utils.exceptions import NotFoundError
+from app.utils.exceptions import NotFoundError, ValidationError
+from app.utils.storage import generate_upload_url
 
 router = APIRouter()
 ingestion_service = IngestionService()
@@ -54,6 +57,23 @@ async def get_user_workspace(user: User, db: AsyncSession) -> Workspace:
 
 
 @router.post(
+    "/upload-url",
+    response_model=UploadURLResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def get_upload_url(
+    request_body: UploadURLRequest,
+    current_user: User = Depends(get_current_user),
+) -> UploadURLResponse:
+    """Generate a signed upload URL for Firebase Storage."""
+    upload_url, storage_path = generate_upload_url(
+        file_name=request_body.file_name,
+        content_type=request_body.content_type,
+    )
+    return UploadURLResponse(upload_url=upload_url, storage_path=storage_path)
+
+
+@router.post(
     "/upload",
     response_model=ContentUploadResponse,
     status_code=status.HTTP_201_CREATED,
@@ -63,7 +83,16 @@ async def upload_content(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ContentUploadResponse:
-    """Upload content for analysis and DNA card generation."""
+    """Upload content for analysis and DNA card generation.
+
+    Accepts either `raw_content` (text) or `storage_path` (file reference).
+    """
+    if not request_body.raw_content and not request_body.storage_path:
+        raise ValidationError(
+            message="Content required",
+            detail="Either raw_content or storage_path must be provided",
+        )
+
     workspace = await get_user_workspace(current_user, db)
 
     # Create the ContentUpload record
@@ -73,6 +102,7 @@ async def upload_content(
         title=request_body.title,
         content_type=request_body.content_type,
         raw_content=request_body.raw_content,
+        storage_path=request_body.storage_path,
         source_url=request_body.source_url,
         status="uploaded",
     )
@@ -80,12 +110,13 @@ async def upload_content(
     await db.flush()
     await db.refresh(content_upload)
 
-    # Run analysis synchronously for now
-    content_upload = await ingestion_service.process_upload(
-        db=db,
-        content_upload_id=content_upload.id,
-        workspace_id=workspace.id,
-    )
+    # Run analysis synchronously for now (only if raw_content provided)
+    if request_body.raw_content:
+        content_upload = await ingestion_service.process_upload(
+            db=db,
+            content_upload_id=content_upload.id,
+            workspace_id=workspace.id,
+        )
 
     return ContentUploadResponse.model_validate(content_upload)
 

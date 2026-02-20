@@ -5,11 +5,6 @@ export const APP_DESCRIPTION = 'Pandocast — Upload once. Pando everywhere.';
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-export const STORAGE_KEYS = {
-  ACCESS_TOKEN: 'access_token',
-  REFRESH_TOKEN: 'refresh_token',
-} as const;
-
 export const ROUTES = {
   HOME: '/',
   LOGIN: '/login',

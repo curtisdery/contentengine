@@ -16,12 +16,8 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const { isAuthenticated, isLoading, initialize } = useAuthStore();
+  const { isAuthenticated, isLoading } = useAuthStore();
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
-
-  useEffect(() => {
-    initialize();
-  }, [initialize]);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {

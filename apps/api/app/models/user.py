@@ -17,7 +17,11 @@ class User(Base):
     email: Mapped[str] = mapped_column(
         String(255), unique=True, nullable=False, index=True
     )
+    firebase_uid: Mapped[str | None] = mapped_column(
+        String(128), unique=True, nullable=True, index=True
+    )
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    fcm_token: Mapped[str | None] = mapped_column(String(500), nullable=True)
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
     avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     date_of_birth: Mapped[date | None] = mapped_column(Date, nullable=True)

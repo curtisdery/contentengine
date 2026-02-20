@@ -24,7 +24,8 @@ class ContentUpload(Base):
     content_type: Mapped[str] = mapped_column(
         String(50), nullable=False
     )  # blog/video_transcript/podcast_transcript
-    raw_content: Mapped[str] = mapped_column(Text, nullable=False)
+    raw_content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    storage_path: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     source_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     content_dna: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     status: Mapped[str] = mapped_column(
