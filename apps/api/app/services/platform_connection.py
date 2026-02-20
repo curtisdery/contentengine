@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.platform_connection import PlatformConnection
 from app.platforms.profiles import get_platform
+from app.utils.encryption import encrypt_token, decrypt_token
 from app.utils.exceptions import NotFoundError, ValidationError
 
 logger = logging.getLogger(__name__)
@@ -23,6 +24,7 @@ class PlatformConnectionService:
         workspace_id: UUID,
         platform_id: str,
         oauth_data: dict,
+        already_encrypted: bool = False,
     ) -> PlatformConnection:
         """Store a new platform connection after OAuth flow.
 
@@ -33,6 +35,9 @@ class PlatformConnectionService:
             - refresh_token (str, optional)
             - token_expires_at (datetime, optional)
             - scopes (list[str], optional)
+
+        If already_encrypted is True, tokens are stored as-is (caller already
+        encrypted them). Otherwise they are encrypted before storage.
         """
         # Validate the platform_id exists
         profile = get_platform(platform_id)
@@ -42,12 +47,19 @@ class PlatformConnectionService:
                 detail=f"Platform '{platform_id}' is not a recognized platform.",
             )
 
+        # Encrypt tokens if not already done
+        access_tok = oauth_data.get("access_token")
+        refresh_tok = oauth_data.get("refresh_token")
+        if not already_encrypted:
+            access_tok = encrypt_token(access_tok) if access_tok else None
+            refresh_tok = encrypt_token(refresh_tok) if refresh_tok else None
+
         # Check for existing active connection
         existing = await self.get_connection(db, workspace_id, platform_id)
         if existing and existing.is_active:
             # Update the existing connection tokens
-            existing.access_token_encrypted = oauth_data.get("access_token")
-            existing.refresh_token_encrypted = oauth_data.get("refresh_token")
+            existing.access_token_encrypted = access_tok
+            existing.refresh_token_encrypted = refresh_tok
             existing.token_expires_at = oauth_data.get("token_expires_at")
             existing.platform_user_id = oauth_data.get("platform_user_id", existing.platform_user_id)
             existing.platform_username = oauth_data.get("platform_username", existing.platform_username)
@@ -64,8 +76,8 @@ class PlatformConnectionService:
             platform_id=platform_id,
             platform_user_id=oauth_data.get("platform_user_id"),
             platform_username=oauth_data.get("platform_username"),
-            access_token_encrypted=oauth_data.get("access_token"),
-            refresh_token_encrypted=oauth_data.get("refresh_token"),
+            access_token_encrypted=access_tok,
+            refresh_token_encrypted=refresh_tok,
             token_expires_at=oauth_data.get("token_expires_at"),
             scopes=oauth_data.get("scopes", []),
             is_active=True,
@@ -155,9 +167,9 @@ class PlatformConnectionService:
                 detail=f"No platform connection found with id {connection_id}",
             )
 
-        connection.access_token_encrypted = access_token
+        connection.access_token_encrypted = encrypt_token(access_token)
         if refresh_token is not None:
-            connection.refresh_token_encrypted = refresh_token
+            connection.refresh_token_encrypted = encrypt_token(refresh_token)
         if expires_at is not None:
             connection.token_expires_at = expires_at
 
@@ -166,6 +178,22 @@ class PlatformConnectionService:
 
         logger.info("Updated tokens for connection %s", connection_id)
         return connection
+
+    @staticmethod
+    def get_decrypted_tokens(connection: PlatformConnection) -> dict:
+        """Decrypt and return tokens for a connection (for use by publishers)."""
+        return {
+            "access_token": (
+                decrypt_token(connection.access_token_encrypted)
+                if connection.access_token_encrypted
+                else None
+            ),
+            "refresh_token": (
+                decrypt_token(connection.refresh_token_encrypted)
+                if connection.refresh_token_encrypted
+                else None
+            ),
+        }
 
     async def get_connection_status(
         self,

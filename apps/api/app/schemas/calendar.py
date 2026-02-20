@@ -128,3 +128,14 @@ class PlatformConnectionStatusResponse(BaseModel):
     platform_username: Optional[str] = None
     token_expired: bool
     is_active: bool
+
+
+class OAuthAuthorizeResponse(BaseModel):
+    """Response containing the OAuth authorize URL to redirect the user to."""
+    authorize_url: str
+
+
+class AppPasswordRequest(BaseModel):
+    """Request body for Bluesky app-password authentication."""
+    handle: str
+    app_password: str

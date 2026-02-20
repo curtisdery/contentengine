@@ -33,8 +33,34 @@ class Settings(BaseSettings):
 
     # Application
     FRONTEND_URL: str = "http://localhost:3000"
+    BACKEND_URL: str = "http://localhost:8000"
     ENVIRONMENT: str = "development"
     APP_VERSION: str = "0.1.0"
+
+    # Token encryption
+    TOKEN_ENCRYPTION_KEY: str = ""
+
+    # Platform OAuth credentials
+    TWITTER_CLIENT_ID: str = ""
+    TWITTER_CLIENT_SECRET: str = ""
+    LINKEDIN_CLIENT_ID: str = ""
+    LINKEDIN_CLIENT_SECRET: str = ""
+    INSTAGRAM_CLIENT_ID: str = ""
+    INSTAGRAM_CLIENT_SECRET: str = ""
+    FACEBOOK_CLIENT_ID: str = ""
+    FACEBOOK_CLIENT_SECRET: str = ""
+    YOUTUBE_CLIENT_ID: str = ""
+    YOUTUBE_CLIENT_SECRET: str = ""
+    TIKTOK_CLIENT_KEY: str = ""
+    TIKTOK_CLIENT_SECRET: str = ""
+    PINTEREST_CLIENT_ID: str = ""
+    PINTEREST_CLIENT_SECRET: str = ""
+    REDDIT_CLIENT_ID: str = ""
+    REDDIT_CLIENT_SECRET: str = ""
+    MEDIUM_CLIENT_ID: str = ""
+    MEDIUM_CLIENT_SECRET: str = ""
+    THREADS_CLIENT_ID: str = ""
+    THREADS_CLIENT_SECRET: str = ""
 
     # Account lockout
     MAX_FAILED_LOGIN_ATTEMPTS: int = 5

@@ -9,6 +9,8 @@ import {
   ArrowLeft,
   ExternalLink,
   ShieldCheck,
+  X,
+  KeyRound,
 } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
@@ -17,14 +19,31 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
+import { Input } from '@/components/ui/input';
 import { getPlatformConfig, platformMap } from '@/components/content/platform-badge';
 import { apiClient, ApiClientError } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
+import { useOAuthPopup } from '@/hooks/use-oauth-popup';
 import { ROUTES } from '@/lib/constants';
 import type {
   PlatformConnectionResponse,
   PlatformProfileResponse,
 } from '@/types/api';
+
+// ---------------------------------------------------------------------------
+// Platform auth method classification
+// ---------------------------------------------------------------------------
+
+const MANUAL_ONLY_PLATFORMS = ['substack', 'quora', 'email', 'press', 'slides'];
+const APP_PASSWORD_PLATFORMS = ['bluesky'];
+
+type AuthMethod = 'oauth' | 'app_password' | 'manual';
+
+function getAuthMethod(platformId: string): AuthMethod {
+  if (MANUAL_ONLY_PLATFORMS.includes(platformId)) return 'manual';
+  if (APP_PASSWORD_PLATFORMS.includes(platformId)) return 'app_password';
+  return 'oauth';
+}
 
 // ---------------------------------------------------------------------------
 // All platforms grouped by tier
@@ -91,6 +110,15 @@ function PlatformCard({
 }: PlatformCardProps) {
   const config = getPlatformConfig(platform.id);
   const isConnected = connection !== null && connection.is_active;
+  const authMethod = getAuthMethod(platform.id);
+
+  const connectLabel = (() => {
+    if (authMethod === 'manual') return 'Manual Only';
+    if (authMethod === 'app_password') return 'Connect with App Password';
+    return 'Connect';
+  })();
+
+  const ConnectIcon = authMethod === 'app_password' ? KeyRound : ExternalLink;
 
   return (
     <div
@@ -109,6 +137,15 @@ function PlatformCard({
           <div className="flex h-5 w-5 items-center justify-center rounded-full bg-cme-success shadow-[0_0_8px_rgba(0,200,150,0.3)]">
             <Check className="h-3 w-3 text-white" />
           </div>
+        </div>
+      )}
+
+      {/* Manual badge */}
+      {authMethod === 'manual' && !isConnected && (
+        <div className="absolute -top-1.5 -right-1.5">
+          <Badge variant="outline" className="text-[9px] px-1.5 py-0 bg-cme-surface border-cme-border">
+            Manual
+          </Badge>
         </div>
       )}
 
@@ -157,17 +194,135 @@ function PlatformCard({
             variant="outline"
             size="sm"
             onClick={() => onConnect(platform.id)}
-            disabled={isActioning}
-            className="w-full gap-1.5 text-xs h-8"
+            disabled={isActioning || authMethod === 'manual'}
+            className={cn(
+              'w-full gap-1.5 text-xs h-8',
+              authMethod === 'manual' && 'opacity-50 cursor-not-allowed'
+            )}
           >
             {isActioning ? (
               <Loader2 className="h-3 w-3 animate-spin" />
             ) : (
-              <ExternalLink className="h-3 w-3" />
+              <ConnectIcon className="h-3 w-3" />
             )}
-            Connect
+            {connectLabel}
           </Button>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Bluesky App Password Dialog (overlay)
+// ---------------------------------------------------------------------------
+
+interface BlueskyDialogProps {
+  open: boolean;
+  onClose: () => void;
+  onSuccess: () => void;
+}
+
+function BlueskyDialog({ open, onClose, onSuccess }: BlueskyDialogProps) {
+  const { success: showSuccess, error: showError } = useToast();
+  const [handle, setHandle] = React.useState('');
+  const [appPassword, setAppPassword] = React.useState('');
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
+
+  if (!open) return null;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!handle.trim() || !appPassword.trim()) return;
+
+    setIsSubmitting(true);
+    try {
+      await apiClient.post('/api/v1/connections/bluesky/app-password', {
+        handle: handle.trim(),
+        app_password: appPassword.trim(),
+      });
+      showSuccess('Connected', 'Bluesky has been connected successfully.');
+      setHandle('');
+      setAppPassword('');
+      onClose();
+      onSuccess();
+    } catch (err) {
+      if (err instanceof ApiClientError) {
+        showError('Connection failed', err.detail);
+      } else {
+        showError('Connection failed', 'An unexpected error occurred.');
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+
+      {/* Dialog */}
+      <div className="relative z-10 w-full max-w-md rounded-xl border border-cme-border bg-cme-background p-6 shadow-2xl">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-cme-text">Connect Bluesky</h3>
+          <button onClick={onClose} className="text-cme-text-muted hover:text-cme-text">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <p className="text-xs text-cme-text-muted mb-4">
+          Bluesky uses app passwords for third-party access. Create one at{' '}
+          <a
+            href="https://bsky.app/settings/app-passwords"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-cme-primary hover:underline"
+          >
+            bsky.app/settings/app-passwords
+          </a>
+        </p>
+
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <Input
+            label="Handle"
+            placeholder="you.bsky.social"
+            value={handle}
+            onChange={(e) => setHandle(e.target.value)}
+            disabled={isSubmitting}
+          />
+          <Input
+            label="App Password"
+            type="password"
+            placeholder="xxxx-xxxx-xxxx-xxxx"
+            value={appPassword}
+            onChange={(e) => setAppPassword(e.target.value)}
+            disabled={isSubmitting}
+          />
+          <div className="flex gap-2 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onClose}
+              disabled={isSubmitting}
+              className="flex-1"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={isSubmitting || !handle.trim() || !appPassword.trim()}
+              className="flex-1"
+            >
+              {isSubmitting ? (
+                <Loader2 className="h-3 w-3 animate-spin mr-1.5" />
+              ) : null}
+              Connect
+            </Button>
+          </div>
+        </form>
       </div>
     </div>
   );
@@ -179,17 +334,19 @@ function PlatformCard({
 
 export default function ConnectionsPage() {
   const { success: showSuccess, error: showError, warning: showWarning } = useToast();
+  const { startOAuth, isConnecting } = useOAuthPopup();
 
   const [connections, setConnections] = React.useState<PlatformConnectionResponse[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const [actioningPlatform, setActioningPlatform] = React.useState<string | null>(null);
+  const [blueskyDialogOpen, setBlueskyDialogOpen] = React.useState(false);
 
   // Fetch connections
   const fetchConnections = React.useCallback(async () => {
     setIsLoading(true);
     try {
       const response = await apiClient.get<PlatformConnectionResponse[]>(
-        '/api/v1/platforms/connections'
+        '/api/v1/connections'
       );
       setConnections(response);
     } catch {
@@ -213,13 +370,33 @@ export default function ConnectionsPage() {
 
   // Connect handler
   const handleConnect = async (platformId: string) => {
+    const authMethod = getAuthMethod(platformId);
+
+    if (authMethod === 'manual') return;
+
+    if (authMethod === 'app_password') {
+      setBlueskyDialogOpen(true);
+      return;
+    }
+
+    // OAuth flow
     setActioningPlatform(platformId);
     try {
-      // Since OAuth isn't wired yet, show a "coming soon" message
-      showWarning(
-        'OAuth Coming Soon',
-        `Direct ${getPlatformConfig(platformId).name} connection will be available in the next update. For now, events will be queued for manual publishing.`
-      );
+      const result = await startOAuth(platformId);
+      if (result.status === 'success') {
+        showSuccess('Connected', `${getPlatformConfig(platformId).name} has been connected.`);
+        await fetchConnections();
+      } else {
+        showError('Connection failed', result.error || 'OAuth flow did not complete successfully.');
+      }
+    } catch (err) {
+      if (err instanceof ApiClientError) {
+        showError('Connection failed', err.detail);
+      } else if (err instanceof Error) {
+        showError('Connection failed', err.message);
+      } else {
+        showError('Connection failed', 'An unexpected error occurred.');
+      }
     } finally {
       setActioningPlatform(null);
     }
@@ -232,7 +409,7 @@ export default function ConnectionsPage() {
 
     setActioningPlatform(conn.platform_id);
     try {
-      await apiClient.delete(`/api/v1/platforms/connections/${connectionId}`);
+      await apiClient.delete(`/api/v1/connections/${connectionId}`);
       showSuccess('Disconnected', `${getPlatformConfig(conn.platform_id).name} has been disconnected.`);
       await fetchConnections();
     } catch (err) {
@@ -347,7 +524,10 @@ export default function ConnectionsPage() {
                       connection={getConnection(platform.id)}
                       onConnect={handleConnect}
                       onDisconnect={handleDisconnect}
-                      isActioning={actioningPlatform === platform.id}
+                      isActioning={
+                        actioningPlatform === platform.id ||
+                        (isConnecting && actioningPlatform === platform.id)
+                      }
                     />
                   ))}
                 </div>
@@ -374,6 +554,13 @@ export default function ConnectionsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Bluesky App Password Dialog */}
+      <BlueskyDialog
+        open={blueskyDialogOpen}
+        onClose={() => setBlueskyDialogOpen(false)}
+        onSuccess={fetchConnections}
+      />
     </div>
   );
 }

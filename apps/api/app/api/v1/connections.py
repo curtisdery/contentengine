@@ -2,24 +2,33 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+import httpx
+from fastapi import APIRouter, Depends, Query, status
+from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.database import get_db
 from app.middleware.auth import get_current_user
 from app.models.organization import OrganizationMember, Workspace
 from app.models.user import User
 from app.schemas.calendar import (
+    AppPasswordRequest,
     ConnectPlatformRequest,
+    OAuthAuthorizeResponse,
     PlatformConnectionResponse,
     PlatformConnectionStatusResponse,
 )
+from app.services.oauth import OAuthService
 from app.services.platform_connection import PlatformConnectionService
-from app.utils.exceptions import NotFoundError
+from app.utils.encryption import encrypt_token
+from app.utils.exceptions import NotFoundError, ValidationError
 
 router = APIRouter()
 connection_service = PlatformConnectionService()
+oauth_service = OAuthService()
+settings = get_settings()
 
 
 async def get_user_workspace(user: User, db: AsyncSession) -> Workspace:
@@ -49,6 +58,11 @@ async def get_user_workspace(user: User, db: AsyncSession) -> Workspace:
         )
 
     return workspace
+
+
+# ---------------------------------------------------------------------------
+# Existing CRUD endpoints
+# ---------------------------------------------------------------------------
 
 
 @router.get("", response_model=list[PlatformConnectionResponse])
@@ -142,3 +156,120 @@ async def get_connection_status(
     )
 
     return PlatformConnectionStatusResponse(**status_data)
+
+
+# ---------------------------------------------------------------------------
+# OAuth flow endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/{platform_id}/authorize",
+    response_model=OAuthAuthorizeResponse,
+)
+async def authorize_platform(
+    platform_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> OAuthAuthorizeResponse:
+    """Generate the OAuth authorize URL for a platform and return it."""
+    workspace = await get_user_workspace(current_user, db)
+
+    url = await oauth_service.generate_authorize_url(
+        platform_id=platform_id,
+        user_id=str(current_user.id),
+        workspace_id=str(workspace.id),
+    )
+
+    return OAuthAuthorizeResponse(authorize_url=url)
+
+
+@router.get("/callback/{platform_id}")
+async def oauth_callback(
+    platform_id: str,
+    code: str = Query(default=""),
+    state: str = Query(default=""),
+    error: str = Query(default=""),
+    db: AsyncSession = Depends(get_db),
+) -> RedirectResponse:
+    """Handle the OAuth provider callback — exchange code for tokens and redirect to frontend."""
+    frontend_callback = f"{settings.FRONTEND_URL}/oauth/callback"
+
+    if error:
+        return RedirectResponse(
+            url=f"{frontend_callback}?status=error&platform={platform_id}&error={error}"
+        )
+
+    if not code or not state:
+        return RedirectResponse(
+            url=f"{frontend_callback}?status=error&platform={platform_id}&error=missing_code_or_state"
+        )
+
+    try:
+        result = await oauth_service.handle_callback(
+            db=db,
+            platform_id=platform_id,
+            code=code,
+            state=state,
+        )
+        username = result.get("platform_username", "")
+        return RedirectResponse(
+            url=f"{frontend_callback}?status=success&platform={platform_id}&username={username}"
+        )
+    except Exception as exc:
+        error_msg = str(exc) if str(exc) else "unknown_error"
+        return RedirectResponse(
+            url=f"{frontend_callback}?status=error&platform={platform_id}&error={error_msg}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Bluesky app-password endpoint
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/bluesky/app-password",
+    response_model=PlatformConnectionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def bluesky_app_password(
+    body: AppPasswordRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> PlatformConnectionResponse:
+    """Authenticate to Bluesky via AT Protocol app password."""
+    workspace = await get_user_workspace(current_user, db)
+
+    # Validate credentials against Bluesky PDS
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.post(
+            "https://bsky.social/xrpc/com.atproto.server.createSession",
+            json={"identifier": body.handle, "password": body.app_password},
+        )
+
+    if resp.status_code != 200:
+        raise ValidationError(
+            message="Authentication failed",
+            detail="Invalid Bluesky handle or app password. Please check your credentials.",
+        )
+
+    session = resp.json()
+    did = session.get("did", "")
+    handle = session.get("handle", body.handle)
+
+    connection = await connection_service.connect_platform(
+        db=db,
+        workspace_id=workspace.id,
+        platform_id="bluesky",
+        oauth_data={
+            "platform_user_id": did,
+            "platform_username": handle,
+            "access_token": body.app_password,
+            "refresh_token": None,
+            "token_expires_at": None,
+            "scopes": [],
+        },
+    )
+
+    return PlatformConnectionResponse.model_validate(connection)

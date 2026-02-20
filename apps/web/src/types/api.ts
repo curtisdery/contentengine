@@ -219,6 +219,10 @@ export interface PlatformConnectionResponse {
   created_at: string;
 }
 
+export interface OAuthAuthorizeResponse {
+  authorize_url: string;
+}
+
 // Analytics Types
 export interface MultiplierScoreResponse {
   id: string;
