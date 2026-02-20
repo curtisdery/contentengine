@@ -358,7 +358,7 @@ export default function QueuePage() {
 
     try {
       const promises = Array.from(selectedIds).map((id) =>
-        apiClient.post(`/api/v1/calendar/events/${id}/publish`).catch(() => null)
+        apiClient.post(`/api/v1/calendar/events/${id}/publish-now`).catch(() => null)
       );
       await Promise.all(promises);
       showSuccess('Bulk publish initiated', `${selectedIds.size} events are being published.`);
@@ -374,7 +374,7 @@ export default function QueuePage() {
   // Individual actions
   const handlePublish = async (id: string) => {
     try {
-      await apiClient.post(`/api/v1/calendar/events/${id}/publish`);
+      await apiClient.post(`/api/v1/calendar/events/${id}/publish-now`);
       showSuccess('Publishing started', 'Your content is being published.');
       await fetchEvents();
     } catch (err) {
@@ -388,7 +388,7 @@ export default function QueuePage() {
 
   const handleCancel = async (id: string) => {
     try {
-      await apiClient.patch(`/api/v1/calendar/events/${id}/cancel`);
+      await apiClient.delete(`/api/v1/calendar/events/${id}`);
       showSuccess('Event cancelled', 'The scheduled event has been cancelled.');
       await fetchEvents();
     } catch (err) {
@@ -402,7 +402,7 @@ export default function QueuePage() {
 
   const handleRetry = async (id: string) => {
     try {
-      await apiClient.post(`/api/v1/calendar/events/${id}/retry`);
+      await apiClient.post(`/api/v1/calendar/events/${id}/publish-now`);
       showSuccess('Retry initiated', 'Retrying publication...');
       await fetchEvents();
     } catch (err) {

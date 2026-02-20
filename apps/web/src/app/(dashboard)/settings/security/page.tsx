@@ -346,7 +346,7 @@ export default function SecurityPage() {
     setIsLoadingSessions(true);
     try {
       const response = await apiClient.get<SessionResponse[]>(
-        '/api/v1/auth/sessions'
+        '/api/v1/security/sessions'
       );
       setSessions(response);
     } catch {
@@ -364,7 +364,7 @@ export default function SecurityPage() {
 
       try {
         const response = await apiClient.get<AuditLogEntry[]>(
-          `/api/v1/auth/audit-log?skip=${page * 20}&limit=20`
+          `/api/v1/security/audit-log?offset=${page * 20}&limit=20`
         );
         if (append) {
           setAuditLog((prev) => [...prev, ...response]);
@@ -392,7 +392,7 @@ export default function SecurityPage() {
   const handleRevokeSession = async (sessionId: string) => {
     setRevokingSession(sessionId);
     try {
-      await apiClient.delete(`/api/v1/auth/sessions/${sessionId}`);
+      await apiClient.delete(`/api/v1/security/sessions/${sessionId}`);
       showSuccess('Session Revoked', 'The session has been terminated.');
       await fetchSessions();
     } catch (err) {
@@ -410,7 +410,7 @@ export default function SecurityPage() {
   const handleRevokeAll = async () => {
     setIsRevokingAll(true);
     try {
-      await apiClient.post('/api/v1/auth/sessions/revoke-all');
+      await apiClient.delete('/api/v1/security/sessions');
       showSuccess(
         'All Sessions Revoked',
         'All other sessions have been terminated.'
@@ -437,7 +437,7 @@ export default function SecurityPage() {
   // Panic handler
   const handlePanic = async () => {
     try {
-      await apiClient.post('/api/v1/autopilot/panic');
+      await apiClient.post('/api/v1/security/panic');
       showWarning(
         'Emergency Stop Executed',
         'All connections, sessions, and autopilot have been revoked.'

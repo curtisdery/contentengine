@@ -21,6 +21,7 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { useAuthStore } from '@/stores/auth-store';
+import { useToast } from '@/hooks/use-toast';
 import { SUBSCRIPTION_LABELS, ROUTES } from '@/lib/constants';
 
 // ---------------------------------------------------------------------------
@@ -85,6 +86,7 @@ function SettingsNavCard({
 
 export default function SettingsPage() {
   const { user } = useAuthStore();
+  const { warning: showWarning } = useToast();
 
   const subscriptionTier = user?.subscription_tier || 'free';
   const subscriptionLabel =
@@ -255,9 +257,9 @@ export default function SettingsPage() {
           </div>
 
           <div className="flex gap-3">
-            <Button variant="outline">Manage Subscription</Button>
+            <Button variant="outline" onClick={() => showWarning('Coming Soon', 'Subscription management will be available in a future update.')}>Manage Subscription</Button>
             {subscriptionTier === 'free' && (
-              <Button>Upgrade to Pro</Button>
+              <Button onClick={() => showWarning('Coming Soon', 'Pro upgrades will be available in a future update.')}>Upgrade to Pro</Button>
             )}
           </div>
         </CardContent>
@@ -286,7 +288,7 @@ export default function SettingsPage() {
                 Last changed: Unknown
               </p>
             </div>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={() => showWarning('Coming Soon', 'Password changes are managed through your authentication provider.')}>
               Change Password
             </Button>
           </div>
@@ -300,7 +302,7 @@ export default function SettingsPage() {
                 Add an extra layer of security
               </p>
             </div>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={() => showWarning('Coming Soon', 'Two-factor authentication will be available in a future update.')}>
               Enable
             </Button>
           </div>

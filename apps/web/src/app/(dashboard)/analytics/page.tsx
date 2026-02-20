@@ -599,7 +599,7 @@ export default function AnalyticsPage() {
     0
   );
   const platformPerf = useAsyncData<PlatformPerformanceResponse[]>(
-    '/api/v1/analytics/platforms',
+    '/api/v1/analytics/platform-performance',
     200
   );
   const contentTypes = useAsyncData<ContentTypePerformanceResponse[]>(
@@ -607,19 +607,19 @@ export default function AnalyticsPage() {
     400
   );
   const hooks = useAsyncData<HookPerformanceResponse[]>(
-    '/api/v1/analytics/hooks',
+    '/api/v1/analytics/hook-performance',
     600
   );
   const heatmap = useAsyncData<TimeHeatmapEntry[]>(
-    '/api/v1/analytics/heatmap',
+    '/api/v1/analytics/time-heatmap',
     800
   );
   const audience = useAsyncData<AudienceIntelligenceResponse>(
-    '/api/v1/analytics/audience',
+    '/api/v1/analytics/audience-intelligence',
     1000
   );
   const strategy = useAsyncData<ContentStrategySuggestion[]>(
-    '/api/v1/analytics/strategy',
+    '/api/v1/analytics/strategy-suggestions',
     1200
   );
 

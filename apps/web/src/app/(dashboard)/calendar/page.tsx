@@ -263,8 +263,8 @@ export default function CalendarPage() {
 
   const handleCancel = async (eventId: string) => {
     try {
-      await apiClient.patch<ScheduledEventResponse>(
-        `/api/v1/calendar/events/${eventId}/cancel`
+      await apiClient.delete(
+        `/api/v1/calendar/events/${eventId}`
       );
       showSuccess('Event cancelled', 'The scheduled event has been cancelled.');
       await fetchData();
@@ -281,7 +281,7 @@ export default function CalendarPage() {
   const handlePublishNow = async (eventId: string) => {
     try {
       await apiClient.post<ScheduledEventResponse>(
-        `/api/v1/calendar/events/${eventId}/publish`
+        `/api/v1/calendar/events/${eventId}/publish-now`
       );
       showSuccess('Publishing started', 'Your content is being published now.');
       const { trackEvent } = await import('@/lib/analytics');
@@ -300,7 +300,7 @@ export default function CalendarPage() {
   const handleRetry = async (eventId: string) => {
     try {
       await apiClient.post<ScheduledEventResponse>(
-        `/api/v1/calendar/events/${eventId}/retry`
+        `/api/v1/calendar/events/${eventId}/publish-now`
       );
       showSuccess('Retry initiated', 'Retrying publication...');
       await fetchData();

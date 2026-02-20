@@ -375,7 +375,7 @@ export default function AutopilotPage() {
   const handleEnable = async (platformId: string) => {
     setActioningPlatform(platformId);
     try {
-      await apiClient.post(`/api/v1/autopilot/${platformId}/enable`);
+      await apiClient.post('/api/v1/autopilot/enable', { platform_id: platformId });
       showSuccess(
         'Autopilot Enabled',
         `${getPlatformConfig(platformId).name} is now on autopilot.`
@@ -397,7 +397,7 @@ export default function AutopilotPage() {
   const handleDisable = async (platformId: string) => {
     setActioningPlatform(platformId);
     try {
-      await apiClient.post(`/api/v1/autopilot/${platformId}/disable`);
+      await apiClient.post(`/api/v1/autopilot/disable/${platformId}`);
       showSuccess(
         'Autopilot Disabled',
         `${getPlatformConfig(platformId).name} autopilot has been turned off.`
@@ -417,7 +417,7 @@ export default function AutopilotPage() {
   // Emergency stop handler
   const handlePanic = async () => {
     try {
-      await apiClient.post('/api/v1/autopilot/panic');
+      await apiClient.post('/api/v1/security/panic');
       showWarning(
         'Emergency Stop Executed',
         'All autopilot, connections, and sessions have been revoked.'

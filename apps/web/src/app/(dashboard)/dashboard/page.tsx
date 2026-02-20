@@ -243,10 +243,12 @@ export default function DashboardPage() {
             Start multiplying your reach. Upload a blog post, video transcript,
             or any content and let Pandocast transform it for every platform.
           </p>
-          <Button size="lg" className="gap-2">
-            Get Started
-            <ArrowUpRight className="h-4 w-4" />
-          </Button>
+          <Link href={ROUTES.CONTENT_UPLOAD}>
+            <Button size="lg" className="gap-2">
+              Get Started
+              <ArrowUpRight className="h-4 w-4" />
+            </Button>
+          </Link>
         </CardContent>
       </Card>
 
@@ -261,18 +263,21 @@ export default function DashboardPage() {
             description="Add a new blog post, transcript, or article"
             icon={<Upload className="h-5 w-5" />}
             accentColor="#6c5ce7"
+            href={ROUTES.CONTENT_UPLOAD}
           />
           <QuickActionCard
             title="Connect Platform"
             description="Link your social media accounts"
             icon={<Globe className="h-5 w-5" />}
             accentColor="#00cec9"
+            href={ROUTES.SETTINGS_CONNECTIONS}
           />
           <QuickActionCard
             title="View Analytics"
             description="Track your content performance"
             icon={<Zap className="h-5 w-5" />}
             accentColor="#fdcb6e"
+            href={ROUTES.ANALYTICS}
           />
         </div>
       </div>
@@ -285,29 +290,32 @@ interface QuickActionCardProps {
   description: string;
   icon: React.ReactNode;
   accentColor: string;
+  href: string;
 }
 
-function QuickActionCard({ title, description, icon, accentColor }: QuickActionCardProps) {
+function QuickActionCard({ title, description, icon, accentColor, href }: QuickActionCardProps) {
   return (
-    <Card className="group cursor-pointer hover:border-cme-border-bright transition-all duration-300">
-      <CardContent className="flex items-center gap-4 p-5">
-        <div
-          className="shrink-0 rounded-lg p-2.5 transition-all duration-300 group-hover:scale-110"
-          style={{
-            backgroundColor: `${accentColor}15`,
-            color: accentColor,
-          }}
-        >
-          {icon}
-        </div>
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-cme-text group-hover:text-white transition-colors">
-            {title}
-          </p>
-          <p className="text-xs text-cme-text-muted">{description}</p>
-        </div>
-        <ArrowUpRight className="ml-auto h-4 w-4 shrink-0 text-cme-text-muted opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-      </CardContent>
-    </Card>
+    <Link href={href}>
+      <Card className="group cursor-pointer hover:border-cme-border-bright transition-all duration-300">
+        <CardContent className="flex items-center gap-4 p-5">
+          <div
+            className="shrink-0 rounded-lg p-2.5 transition-all duration-300 group-hover:scale-110"
+            style={{
+              backgroundColor: `${accentColor}15`,
+              color: accentColor,
+            }}
+          >
+            {icon}
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-cme-text group-hover:text-white transition-colors">
+              {title}
+            </p>
+            <p className="text-xs text-cme-text-muted">{description}</p>
+          </div>
+          <ArrowUpRight className="ml-auto h-4 w-4 shrink-0 text-cme-text-muted opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+        </CardContent>
+      </Card>
+    </Link>
   );
 }
