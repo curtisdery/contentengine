@@ -51,7 +51,7 @@ class AuditService:
             resource_id=resource_id,
             ip_address=ip_address,
             user_agent=user_agent,
-            metadata=metadata,
+            event_metadata=metadata,
         )
         db.add(entry)
         await db.flush()
