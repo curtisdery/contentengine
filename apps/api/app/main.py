@@ -30,14 +30,17 @@ app = FastAPI(
     title="Pandocast API",
     description="Upload once. Pando everywhere. Analyzes your content's DNA, preserves your brand voice, and generates 18 platform-native formats.",
     version=settings.APP_VERSION,
-    docs_url="/docs" if settings.ENVIRONMENT == "development" else None,
-    redoc_url="/redoc" if settings.ENVIRONMENT == "development" else None,
+    docs_url="/docs",
+    redoc_url="/redoc",
 )
 
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.FRONTEND_URL],
+    allow_origins=[
+        settings.FRONTEND_URL,
+        "https://app.pandocast.ai",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
