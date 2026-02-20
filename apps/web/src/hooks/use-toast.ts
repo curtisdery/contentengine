@@ -1,5 +1,6 @@
 'use client';
 
+import { useCallback } from 'react';
 import { create } from 'zustand';
 import { TOAST_DURATION } from '@/lib/constants';
 
@@ -56,24 +57,24 @@ const useToastStore = create<ToastState>((set) => ({
 export function useToast() {
   const { toasts, addToast, removeToast, clearToasts } = useToastStore();
 
-  const toast = (props: Omit<Toast, 'id' | 'duration' | 'variant'> & { variant?: ToastVariant; duration?: number }) => {
+  const toast = useCallback((props: Omit<Toast, 'id' | 'duration' | 'variant'> & { variant?: ToastVariant; duration?: number }) => {
     return addToast({
       variant: 'default',
       ...props,
     });
-  };
+  }, [addToast]);
 
-  const success = (title: string, description?: string) => {
+  const success = useCallback((title: string, description?: string) => {
     return addToast({ title, description, variant: 'success' });
-  };
+  }, [addToast]);
 
-  const error = (title: string, description?: string) => {
+  const error = useCallback((title: string, description?: string) => {
     return addToast({ title, description, variant: 'error' });
-  };
+  }, [addToast]);
 
-  const warning = (title: string, description?: string) => {
+  const warning = useCallback((title: string, description?: string) => {
     return addToast({ title, description, variant: 'warning' });
-  };
+  }, [addToast]);
 
   return {
     toasts,

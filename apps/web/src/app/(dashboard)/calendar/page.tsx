@@ -133,10 +133,10 @@ export default function CalendarPage() {
   const [autoScheduleOpen, setAutoScheduleOpen] = React.useState(false);
   const [draggedEventId, setDraggedEventId] = React.useState<string | null>(null);
 
-  // Computed dates
-  const weekStart = getWeekStart(currentDate);
-  const monthStart = getMonthStart(currentDate);
-  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  // Computed dates — memoised so references are stable across re-renders
+  const weekStart = React.useMemo(() => getWeekStart(currentDate), [currentDate]);
+  const monthStart = React.useMemo(() => getMonthStart(currentDate), [currentDate]);
+  const weekDays = React.useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
 
   // Month grid: weeks of the month
   const monthWeeks = React.useMemo(() => {
