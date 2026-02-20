@@ -8,8 +8,11 @@ from app.schemas.auth import (
     SignupRequest,
     LoginRequest,
     RefreshTokenRequest,
+    ForgotPasswordRequest,
+    ResetPasswordRequest,
     AuthTokenResponse,
     UserResponse,
+    MessageResponse,
 )
 from app.services import auth as auth_service
 
@@ -76,6 +79,29 @@ async def get_me(
 ) -> UserResponse:
     """Return the currently authenticated user."""
     return UserResponse.model_validate(current_user)
+
+
+@router.post("/forgot-password", response_model=MessageResponse)
+async def forgot_password(
+    request_body: ForgotPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+) -> MessageResponse:
+    """Request a password reset link."""
+    await auth_service.forgot_password(db=db, request=request_body)
+    # Always return success to prevent email enumeration
+    return MessageResponse(
+        message="If an account with that email exists, a password reset link has been sent."
+    )
+
+
+@router.post("/reset-password", response_model=MessageResponse)
+async def reset_password(
+    request_body: ResetPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+) -> MessageResponse:
+    """Reset password using a valid reset token."""
+    await auth_service.reset_password(db=db, request=request_body)
+    return MessageResponse(message="Password has been reset successfully. You can now log in.")
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)

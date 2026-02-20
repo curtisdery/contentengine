@@ -41,5 +41,18 @@ class UserResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    password: str = Field(..., min_length=12, description="Minimum 12 characters")
+
+
+class MessageResponse(BaseModel):
+    message: str
+
+
 # Rebuild model to resolve forward reference
 AuthTokenResponse.model_rebuild()

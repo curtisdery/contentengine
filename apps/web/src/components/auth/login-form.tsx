@@ -109,12 +109,12 @@ function LoginForm() {
         />
 
         <div className="flex items-center justify-end">
-          <button
-            type="button"
+          <Link
+            href="/forgot-password"
             className="text-xs text-cme-primary hover:text-cme-primary-hover transition-colors"
           >
             Forgot password?
-          </button>
+          </Link>
         </div>
 
         <Button

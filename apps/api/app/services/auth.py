@@ -13,6 +13,8 @@ from app.schemas.auth import (
     SignupRequest,
     LoginRequest,
     RefreshTokenRequest,
+    ForgotPasswordRequest,
+    ResetPasswordRequest,
     AuthTokenResponse,
     UserResponse,
 )
@@ -289,3 +291,76 @@ async def logout(
     sessions = result.scalars().all()
     for session in sessions:
         session.is_active = False
+
+
+async def forgot_password(
+    db: AsyncSession,
+    request: ForgotPasswordRequest,
+) -> None:
+    """Generate a password reset token for the user.
+
+    Always returns success to prevent email enumeration.
+    """
+    result = await db.execute(select(User).where(User.email == request.email))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        return  # Silent — don't reveal whether the email exists
+
+    # Generate reset token valid for 1 hour
+    user.password_reset_token = generate_verification_token()
+    user.password_reset_expires = datetime.utcnow() + timedelta(hours=1)
+    await db.flush()
+
+    # In production, send email here. For now, log the token for dev/testing.
+    import structlog
+
+    logger = structlog.get_logger()
+    logger.info(
+        "password_reset_requested",
+        email=user.email,
+        reset_token=user.password_reset_token,
+    )
+
+
+async def reset_password(
+    db: AsyncSession,
+    request: ResetPasswordRequest,
+) -> None:
+    """Reset a user's password using a valid reset token."""
+    result = await db.execute(
+        select(User).where(
+            User.password_reset_token == request.token,
+            User.password_reset_expires > datetime.utcnow(),
+        )
+    )
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise ValidationError(
+            message="Invalid or expired token",
+            detail="This password reset link is invalid or has expired. Please request a new one.",
+        )
+
+    if not validate_password_strength(request.password):
+        raise ValidationError(
+            message="Password too weak",
+            detail="Password must be at least 12 characters long",
+        )
+
+    # Update password and clear the reset token
+    user.password_hash = hash_password(request.password)
+    user.password_reset_token = None
+    user.password_reset_expires = None
+
+    # Invalidate all existing sessions (force re-login)
+    sessions_result = await db.execute(
+        select(Session).where(
+            Session.user_id == user.id,
+            Session.is_active == True,
+        )
+    )
+    for session in sessions_result.scalars().all():
+        session.is_active = False
+
+    await db.flush()
