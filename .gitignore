@@ -51,3 +51,4 @@ secrets/
 
 # OS
 Thumbs.db
+.vercel
