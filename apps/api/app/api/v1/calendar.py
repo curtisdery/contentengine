@@ -503,7 +503,7 @@ async def publish_now(
         try:
             publish_result = await publisher.publish(
                 content=output.content,
-                metadata=output.metadata or {},
+                metadata=output.output_metadata or {},
                 connection=connection,
             )
         except Exception as e:

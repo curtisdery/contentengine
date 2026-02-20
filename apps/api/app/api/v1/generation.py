@@ -155,12 +155,12 @@ async def generate_content(
                 platform_id=output.platform_id,
             )
 
-            metadata = output.metadata or {}
+            metadata = output.output_metadata or {}
             metadata["moderation_result"] = {
                 "safety": safety_result,
                 "compliance": compliance_result,
             }
-            output.metadata = metadata
+            output.output_metadata = metadata
 
     await db.flush()
 
@@ -172,7 +172,7 @@ async def generate_content(
     response_items = []
     for output in outputs:
         resp = GeneratedOutputResponse.model_validate(output)
-        meta = output.metadata or {}
+        meta = output.output_metadata or {}
         resp.moderation_result = meta.get("moderation_result")
         response_items.append(resp)
 
@@ -216,7 +216,7 @@ async def list_outputs(
     items = []
     for output in outputs:
         resp = GeneratedOutputResponse.model_validate(output)
-        meta = output.metadata or {}
+        meta = output.output_metadata or {}
         resp.moderation_result = meta.get("moderation_result")
         items.append(resp)
 
@@ -265,7 +265,7 @@ async def get_output(
         )
 
     resp = GeneratedOutputResponse.model_validate(output)
-    meta = output.metadata or {}
+    meta = output.output_metadata or {}
     resp.moderation_result = meta.get("moderation_result")
     return resp
 
@@ -319,13 +319,13 @@ async def update_output(
             content=request_body.content,
             platform_id=output.platform_id,
         )
-        metadata = output.metadata or {}
+        metadata = output.output_metadata or {}
         metadata["moderation_result"] = {
             "safety": safety_result,
             "compliance": compliance_result,
         }
         metadata["manually_edited"] = True
-        output.metadata = metadata
+        output.output_metadata = metadata
 
     if request_body.status is not None:
         output.status = request_body.status
@@ -334,7 +334,7 @@ async def update_output(
     await db.refresh(output)
 
     resp = GeneratedOutputResponse.model_validate(output)
-    meta = output.metadata or {}
+    meta = output.output_metadata or {}
     resp.moderation_result = meta.get("moderation_result")
     return resp
 
@@ -377,7 +377,7 @@ async def bulk_approve_outputs(
         await db.refresh(output)
 
         resp = GeneratedOutputResponse.model_validate(output)
-        meta = output.metadata or {}
+        meta = output.output_metadata or {}
         resp.moderation_result = meta.get("moderation_result")
         approved.append(resp)
 

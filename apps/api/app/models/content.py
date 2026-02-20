@@ -58,7 +58,7 @@ class GeneratedOutput(Base):
     platform_id: Mapped[str] = mapped_column(String(50), nullable=False)
     format_name: Mapped[str] = mapped_column(String(100), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    output_metadata: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
     voice_match_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     status: Mapped[str] = mapped_column(
         String(50), default="draft"

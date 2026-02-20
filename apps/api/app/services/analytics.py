@@ -490,7 +490,7 @@ class AnalyticsService:
 
         hook_data: dict[str, dict] = {}
         for snap, output in rows:
-            metadata = output.metadata or {}
+            metadata = output.output_metadata or {}
             hook_type = metadata.get("hook_type", "unknown")
 
             if hook_type not in hook_data:

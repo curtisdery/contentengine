@@ -301,7 +301,7 @@ class TransformationEngine:
                     platform_id=platform.platform_id,
                     format_name=platform.name,
                     content=result.get("content", ""),
-                    metadata=metadata,
+                    output_metadata=metadata,
                     voice_match_score=voice_score,
                     status="draft",
                 )
