@@ -264,6 +264,9 @@ def _extract_user_info(platform_id: str, info: dict) -> tuple[str | None, str | 
     elif platform_id == "linkedin":
         uid = info.get("sub")
         uname = info.get("name")
+    elif platform_id == "instagram":
+        uid = info.get("id")
+        uname = info.get("username")
     elif platform_id in ("facebook", "threads"):
         uid = info.get("id")
         uname = info.get("name") or info.get("username")

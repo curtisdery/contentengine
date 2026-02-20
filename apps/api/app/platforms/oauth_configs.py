@@ -63,6 +63,7 @@ OAUTH_CONFIGS: dict[str, OAuthPlatformConfig] = {
         auth_method=AuthMethod.OAUTH2,
         authorize_url="https://www.facebook.com/v21.0/dialog/oauth",
         token_url="https://graph.facebook.com/v21.0/oauth/access_token",
+        userinfo_url="https://graph.instagram.com/me?fields=id,username",
         scopes=["instagram_basic", "instagram_content_publish"],
         client_id_env="INSTAGRAM_CLIENT_ID",
         client_secret_env="INSTAGRAM_CLIENT_SECRET",

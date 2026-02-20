@@ -23,7 +23,7 @@ class GeneratedOutputResponse(BaseModel):
     platform_id: str
     format_name: str
     content: str
-    metadata: Optional[dict] = None
+    metadata: Optional[dict] = Field(None, validation_alias="output_metadata")
     voice_match_score: Optional[float] = None
     status: str
     moderation_result: Optional[dict] = None
@@ -32,7 +32,7 @@ class GeneratedOutputResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True, "populate_by_name": True}
 
 
 class GeneratedOutputListResponse(BaseModel):

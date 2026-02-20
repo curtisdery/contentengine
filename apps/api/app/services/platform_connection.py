@@ -1,7 +1,7 @@
 """Platform connection service — manage OAuth connections to external platforms."""
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 
 from sqlalchemy import select
@@ -223,7 +223,11 @@ class PlatformConnectionService:
 
         token_expired = False
         if connection.token_expires_at:
-            token_expired = connection.token_expires_at < datetime.utcnow()
+            expires = connection.token_expires_at
+            if expires.tzinfo is None:
+                token_expired = expires < datetime.utcnow()
+            else:
+                token_expired = expires < datetime.now(timezone.utc)
 
         return {
             "connected": True,

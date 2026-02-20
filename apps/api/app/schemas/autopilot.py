@@ -119,10 +119,10 @@ class AuditLogResponse(BaseModel):
     resource_type: Optional[str] = None
     resource_id: Optional[str] = None
     ip_address: Optional[str] = None
-    metadata: Optional[dict] = None
+    metadata: Optional[dict] = Field(None, validation_alias="event_metadata")
     created_at: datetime
 
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True, "populate_by_name": True}
 
 
 class AuditLogListResponse(BaseModel):
