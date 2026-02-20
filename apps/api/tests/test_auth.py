@@ -1,164 +1,84 @@
+"""Tests for Firebase-based authentication flow."""
+
 import pytest
 from httpx import AsyncClient
 
+from tests.conftest import FAKE_TOKEN
 
 SIGNUP_URL = "/api/v1/auth/signup"
-LOGIN_URL = "/api/v1/auth/login"
-
-VALID_USER = {
-    "email": "testuser@example.com",
-    "password": "securepassword123",
-    "full_name": "Test User",
-}
 
 
 @pytest.mark.asyncio
 async def test_signup_success(client: AsyncClient):
-    """Test that a new user can sign up successfully."""
-    response = await client.post(SIGNUP_URL, json=VALID_USER)
-    assert response.status_code == 201
-
-    data = response.json()
-    assert "access_token" in data
-    assert "refresh_token" in data
-    assert data["token_type"] == "bearer"
-    assert data["user"]["email"] == VALID_USER["email"]
-    assert data["user"]["full_name"] == VALID_USER["full_name"]
-    assert data["user"]["email_verified"] is False
-
-
-@pytest.mark.asyncio
-async def test_signup_duplicate_email(client: AsyncClient):
-    """Test that signing up with an existing email fails."""
-    # First signup
-    response = await client.post(SIGNUP_URL, json=VALID_USER)
-    assert response.status_code == 201
-
-    # Duplicate signup
-    response = await client.post(SIGNUP_URL, json=VALID_USER)
-    assert response.status_code == 422
-
-    data = response.json()
-    assert data["error"] == "Email already registered"
-
-
-@pytest.mark.asyncio
-async def test_signup_weak_password(client: AsyncClient):
-    """Test that signing up with a short password fails."""
-    weak_user = {
-        "email": "weak@example.com",
-        "password": "short",
-        "full_name": "Weak Pass",
-    }
-    response = await client.post(SIGNUP_URL, json=weak_user)
-    # Pydantic validation will catch min_length=12 before service
-    assert response.status_code == 422
-
-
-@pytest.mark.asyncio
-async def test_login_success(client: AsyncClient):
-    """Test that an existing user can log in successfully."""
-    # Sign up first
-    await client.post(SIGNUP_URL, json=VALID_USER)
-
-    # Login
-    login_data = {
-        "email": VALID_USER["email"],
-        "password": VALID_USER["password"],
-    }
-    response = await client.post(LOGIN_URL, json=login_data)
-    assert response.status_code == 200
-
-    data = response.json()
-    assert "access_token" in data
-    assert "refresh_token" in data
-    assert data["user"]["email"] == VALID_USER["email"]
-
-
-@pytest.mark.asyncio
-async def test_login_wrong_password(client: AsyncClient):
-    """Test that login with wrong password fails."""
-    # Sign up first
-    await client.post(SIGNUP_URL, json=VALID_USER)
-
-    # Login with wrong password
-    login_data = {
-        "email": VALID_USER["email"],
-        "password": "wrongpassword123",
-    }
-    response = await client.post(LOGIN_URL, json=login_data)
-    assert response.status_code == 401
-
-    data = response.json()
-    assert data["error"] == "Invalid credentials"
-
-
-@pytest.mark.asyncio
-async def test_login_nonexistent_email(client: AsyncClient):
-    """Test that login with a non-existent email fails."""
-    login_data = {
-        "email": "nobody@example.com",
-        "password": "doesnotmatter123",
-    }
-    response = await client.post(LOGIN_URL, json=login_data)
-    assert response.status_code == 401
-
-
-@pytest.mark.asyncio
-async def test_get_current_user(client: AsyncClient):
-    """Test that an authenticated user can fetch their profile."""
-    # Sign up
-    response = await client.post(SIGNUP_URL, json=VALID_USER)
-    token = response.json()["access_token"]
-
-    # Get profile
-    response = await client.get(
-        "/api/v1/users/me",
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    assert response.status_code == 200
-    data = response.json()
-    assert data["email"] == VALID_USER["email"]
-
-
-@pytest.mark.asyncio
-async def test_get_current_user_unauthorized(client: AsyncClient):
-    """Test that unauthenticated access to profile is rejected."""
-    response = await client.get("/api/v1/users/me")
-    assert response.status_code == 401
-
-
-@pytest.mark.asyncio
-async def test_refresh_token(client: AsyncClient):
-    """Test that a refresh token can be exchanged for new tokens."""
-    # Sign up
-    response = await client.post(SIGNUP_URL, json=VALID_USER)
-    refresh_token = response.json()["refresh_token"]
-
-    # Refresh
+    """Test that a new user can sign up via Firebase."""
     response = await client.post(
-        "/api/v1/auth/refresh",
-        json={"refresh_token": refresh_token},
+        SIGNUP_URL,
+        json={"firebase_token": FAKE_TOKEN, "full_name": "Test User"},
+    )
+    assert response.status_code == 201
+
+    data = response.json()
+    assert data["email"] == "test@example.com"
+    assert data["full_name"] == "Test User"
+    assert data["email_verified"] is True
+
+
+@pytest.mark.asyncio
+async def test_signup_idempotent(client: AsyncClient):
+    """Test that signing up twice with the same Firebase UID returns the same user."""
+    response1 = await client.post(
+        SIGNUP_URL,
+        json={"firebase_token": FAKE_TOKEN, "full_name": "Test User"},
+    )
+    assert response1.status_code == 201
+
+    response2 = await client.post(
+        SIGNUP_URL,
+        json={"firebase_token": FAKE_TOKEN, "full_name": "Updated Name"},
+    )
+    # sync_firebase_user updates the existing user — returns 201 (idempotent create)
+    assert response2.status_code == 201
+    assert response2.json()["id"] == response1.json()["id"]
+    assert response2.json()["full_name"] == "Updated Name"
+
+
+@pytest.mark.asyncio
+async def test_get_me(client: AsyncClient):
+    """Test that an authenticated user can fetch their profile via /me."""
+    # Create user first
+    await client.post(
+        SIGNUP_URL,
+        json={"firebase_token": FAKE_TOKEN, "full_name": "Test User"},
+    )
+
+    response = await client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {FAKE_TOKEN}"},
     )
     assert response.status_code == 200
     data = response.json()
-    assert "access_token" in data
-    assert "refresh_token" in data
-    # New refresh token should be different (rotation)
-    assert data["refresh_token"] != refresh_token
+    assert data["email"] == "test@example.com"
+
+
+@pytest.mark.asyncio
+async def test_get_me_unauthorized(client: AsyncClient):
+    """Test that unauthenticated access to /me is rejected."""
+    response = await client.get("/api/v1/auth/me")
+    assert response.status_code == 401
 
 
 @pytest.mark.asyncio
 async def test_logout(client: AsyncClient):
-    """Test that logout invalidates the session."""
-    # Sign up
-    response = await client.post(SIGNUP_URL, json=VALID_USER)
-    token = response.json()["access_token"]
+    """Test that logout succeeds."""
+    # Create user first
+    await client.post(
+        SIGNUP_URL,
+        json={"firebase_token": FAKE_TOKEN, "full_name": "Test User"},
+    )
 
-    # Logout
     response = await client.post(
         "/api/v1/auth/logout",
-        headers={"Authorization": f"Bearer {token}"},
+        headers={"Authorization": f"Bearer {FAKE_TOKEN}"},
     )
     assert response.status_code == 204
 

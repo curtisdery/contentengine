@@ -24,6 +24,7 @@ from app.services.scheduler import (
     DISTRIBUTION_ARC,
     SchedulerService,
 )
+from tests.conftest import FAKE_TOKEN
 
 
 # ---------------------------------------------------------------------------
@@ -33,20 +34,16 @@ from app.services.scheduler import (
 SIGNUP_URL = "/api/v1/auth/signup"
 CALENDAR_BASE = "/api/v1/calendar"
 
-VALID_USER = {
-    "email": "calendar_test@example.com",
-    "password": "securepassword123",
-    "full_name": "Calendar Test User",
-}
-
 
 @pytest_asyncio.fixture
 async def auth_headers(client: AsyncClient) -> dict[str, str]:
     """Sign up a test user and return auth headers."""
-    response = await client.post(SIGNUP_URL, json=VALID_USER)
+    response = await client.post(
+        SIGNUP_URL,
+        json={"firebase_token": FAKE_TOKEN, "full_name": "Calendar Test User"},
+    )
     assert response.status_code == 201, response.text
-    token = response.json()["access_token"]
-    return {"Authorization": f"Bearer {token}"}
+    return {"Authorization": f"Bearer {FAKE_TOKEN}"}
 
 
 @pytest_asyncio.fixture
@@ -532,8 +529,10 @@ class TestMarkFailedRetryBackoff:
         assert event.status == "scheduled"  # Re-queued, not permanently failed
         assert event.publish_error == "Connection timeout"
         # The new scheduled_at should be roughly 2 minutes from now
-        expected_min = datetime.now(timezone.utc) + timedelta(seconds=100)
-        assert event.scheduled_at >= expected_min
+        # SQLite returns naive datetimes, so strip tzinfo for comparison
+        expected_min = datetime.utcnow() + timedelta(seconds=100)
+        scheduled = event.scheduled_at.replace(tzinfo=None) if event.scheduled_at.tzinfo else event.scheduled_at
+        assert scheduled >= expected_min
 
         # Second failure: retry_count goes to 2, backoff = 2^2 * 60 = 240s
         event.status = "publishing"

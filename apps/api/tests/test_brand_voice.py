@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.brand_voice import BrandVoiceProfile
 from app.models.organization import Organization, OrganizationMember, Workspace
 from app.models.user import User
-from app.utils.security import hash_password, create_access_token  # create_access_token(user_id: UUID)
+from tests.conftest import FAKE_FIREBASE_UID, FAKE_TOKEN
 
 
 PROFILES_URL = "/api/v1/voice/profiles"
@@ -40,11 +40,15 @@ MOCK_VOICE_ANALYSIS = {
 
 
 async def create_test_user_with_workspace(db: AsyncSession) -> tuple[User, Workspace, str]:
-    """Helper to create a test user with org, workspace, and auth token."""
+    """Helper to create a test user with org, workspace, and auth token.
+
+    Uses the FAKE_FIREBASE_UID so the mocked verify_firebase_token in conftest
+    will resolve to this user in the auth middleware.
+    """
     user = User(
         id=uuid.uuid4(),
-        email=f"voicetest_{uuid.uuid4().hex[:8]}@example.com",
-        password_hash=hash_password("securepassword123"),
+        email="test@example.com",
+        firebase_uid=FAKE_FIREBASE_UID,
         full_name="Voice Test User",
         is_active=True,
         email_verified=True,
@@ -79,9 +83,7 @@ async def create_test_user_with_workspace(db: AsyncSession) -> tuple[User, Works
     db.add(workspace)
     await db.flush()
 
-    token = create_access_token(user_id=user.id)
-
-    return user, workspace, token
+    return user, workspace, FAKE_TOKEN
 
 
 @pytest.mark.asyncio

@@ -14,6 +14,7 @@ from app.models.analytics import AnalyticsSnapshot, MultiplierScore
 from app.models.calendar import ScheduledEvent
 from app.models.content import ContentUpload, GeneratedOutput
 from app.services.analytics import AnalyticsService
+from tests.conftest import FAKE_TOKEN
 
 
 # ---------------------------------------------------------------------------
@@ -23,20 +24,16 @@ from app.services.analytics import AnalyticsService
 SIGNUP_URL = "/api/v1/auth/signup"
 ANALYTICS_BASE = "/api/v1/analytics"
 
-VALID_USER = {
-    "email": "analytics_test@example.com",
-    "password": "securepassword123",
-    "full_name": "Analytics Test User",
-}
-
 
 @pytest_asyncio.fixture
 async def auth_headers(client: AsyncClient) -> dict[str, str]:
     """Sign up a test user and return auth headers."""
-    response = await client.post(SIGNUP_URL, json=VALID_USER)
+    response = await client.post(
+        SIGNUP_URL,
+        json={"firebase_token": FAKE_TOKEN, "full_name": "Analytics Test User"},
+    )
     assert response.status_code == 201, response.text
-    token = response.json()["access_token"]
-    return {"Authorization": f"Bearer {token}"}
+    return {"Authorization": f"Bearer {FAKE_TOKEN}"}
 
 
 @pytest_asyncio.fixture

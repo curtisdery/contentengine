@@ -4,8 +4,10 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import BigInteger, Float, Integer, String, DateTime, ForeignKey, Index, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.models.types import JSONB
 
 from app.database import Base
 

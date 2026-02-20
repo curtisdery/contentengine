@@ -15,6 +15,7 @@ from app.models.analytics import AnalyticsSnapshot
 from app.services.autopilot import AutopilotService
 from app.services.ab_testing import ABTestingService
 from app.utils.exceptions import ValidationError
+from tests.conftest import FAKE_TOKEN
 
 
 # ---------------------------------------------------------------------------
@@ -26,20 +27,16 @@ AUTOPILOT_BASE = "/api/v1/autopilot"
 AB_TESTS_BASE = "/api/v1/ab-tests"
 SECURITY_BASE = "/api/v1/security"
 
-VALID_USER = {
-    "email": "autopilot_test@example.com",
-    "password": "securepassword123",
-    "full_name": "Autopilot Test User",
-}
-
 
 @pytest_asyncio.fixture
 async def auth_headers(client: AsyncClient) -> dict[str, str]:
     """Sign up a test user and return auth headers."""
-    response = await client.post(SIGNUP_URL, json=VALID_USER)
+    response = await client.post(
+        SIGNUP_URL,
+        json={"firebase_token": FAKE_TOKEN, "full_name": "Autopilot Test User"},
+    )
     assert response.status_code == 201, response.text
-    token = response.json()["access_token"]
-    return {"Authorization": f"Bearer {token}"}
+    return {"Authorization": f"Bearer {FAKE_TOKEN}"}
 
 
 @pytest_asyncio.fixture
