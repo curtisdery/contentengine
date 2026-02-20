@@ -9,6 +9,7 @@ from app.schemas.auth import (
     LoginRequest,
     RefreshTokenRequest,
     AuthTokenResponse,
+    UserResponse,
 )
 from app.services import auth as auth_service
 
@@ -67,6 +68,14 @@ async def refresh(
         ip_address=ip_address,
         user_agent_str=user_agent_str,
     )
+
+
+@router.get("/me", response_model=UserResponse)
+async def get_me(
+    current_user: User = Depends(get_current_user),
+) -> UserResponse:
+    """Return the currently authenticated user."""
+    return UserResponse.model_validate(current_user)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
