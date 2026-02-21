@@ -238,11 +238,20 @@ export default function DashboardPage() {
       {/* Empty State / CTA */}
       <Card
         glow="primary"
-        className="relative overflow-hidden"
+        className="relative overflow-hidden cursor-pointer group"
+        onClick={() => router.push(ROUTES.CONTENT_UPLOAD)}
+        role="link"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            router.push(ROUTES.CONTENT_UPLOAD);
+          }
+        }}
       >
         <div className="absolute inset-0 bg-gradient-to-br from-cme-primary/5 via-transparent to-cme-secondary/5 pointer-events-none" />
         <CardContent className="relative flex flex-col items-center justify-center py-16 text-center">
-          <div className="mb-6 rounded-2xl bg-cme-primary/10 p-5">
+          <div className="mb-6 rounded-2xl bg-cme-primary/10 p-5 transition-transform duration-300 group-hover:scale-110">
             <Sparkles className="h-10 w-10 text-cme-primary" />
           </div>
           <h2 className="mb-2 text-2xl font-semibold text-cme-text">
@@ -255,7 +264,6 @@ export default function DashboardPage() {
           <Button
             size="lg"
             className="gap-2"
-            onClick={() => router.push(ROUTES.CONTENT_UPLOAD)}
           >
             Get Started
             <ArrowUpRight className="h-4 w-4" />

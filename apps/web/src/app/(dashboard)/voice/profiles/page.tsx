@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Plus, Mic, Trash2, Pencil, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -84,6 +84,8 @@ function DeleteConfirm({
 }
 
 function EmptyState() {
+  const router = useRouter();
+
   return (
     <div className="flex flex-col items-center justify-center py-20">
       <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-cme-surface-hover">
@@ -95,17 +97,16 @@ function EmptyState() {
       <p className="mt-2 max-w-sm text-center text-sm text-cme-text-muted">
         Set up your first voice profile to ensure every output sounds like you.
       </p>
-      <Link href={ROUTES.VOICE_SETUP} className="mt-6">
-        <Button>
-          <Plus className="mr-2 h-4 w-4" />
-          Create Your First Profile
-        </Button>
-      </Link>
+      <Button className="mt-6" onClick={() => router.push(ROUTES.VOICE_SETUP)}>
+        <Plus className="mr-2 h-4 w-4" />
+        Create Your First Profile
+      </Button>
     </div>
   );
 }
 
 export default function VoiceProfilesPage() {
+  const router = useRouter();
   const { success, error: showError } = useToast();
   const [profiles, setProfiles] = React.useState<VoiceProfileResponse[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
@@ -168,12 +169,10 @@ export default function VoiceProfilesPage() {
             Manage your voice profiles for consistent content generation
           </p>
         </div>
-        <Link href={ROUTES.VOICE_SETUP}>
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
-            Create New Profile
-          </Button>
-        </Link>
+        <Button onClick={() => router.push(ROUTES.VOICE_SETUP)}>
+          <Plus className="mr-2 h-4 w-4" />
+          Create New Profile
+        </Button>
       </div>
 
       {/* Error State */}
@@ -230,11 +229,14 @@ export default function VoiceProfilesPage() {
                     )}
                   </div>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Link href={`${ROUTES.VOICE_SETUP}?edit=${profile.id}`}>
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                    </Link>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => router.push(`${ROUTES.VOICE_SETUP}?edit=${profile.id}`)}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
                     <Button
                       variant="ghost"
                       size="icon"

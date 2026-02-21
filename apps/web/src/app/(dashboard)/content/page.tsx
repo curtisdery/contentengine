@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Plus, FileText, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -44,33 +44,46 @@ function ContentCardSkeleton() {
 }
 
 function ContentCard({ item }: { item: ContentUploadResponse }) {
+  const router = useRouter();
+
   return (
-    <Link href={`${ROUTES.CONTENT_DETAIL}/${item.id}`}>
-      <Card className="group cursor-pointer transition-all duration-200 hover:border-cme-border-bright hover:bg-cme-surface-hover/50">
-        <CardContent className="p-5">
-          <div className="space-y-3">
-            <h3 className="text-base font-semibold text-cme-text group-hover:text-cme-primary transition-colors line-clamp-2">
-              {item.title}
-            </h3>
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge
-                variant={contentTypeBadgeVariant[item.content_type] || 'outline'}
-              >
-                {contentTypeLabels[item.content_type] || item.content_type}
-              </Badge>
-              <StatusBadge status={item.status} />
-            </div>
-            <p className="text-xs text-cme-text-muted">
-              {formatDate(item.created_at)}
-            </p>
+    <Card
+      className="group cursor-pointer transition-all duration-200 hover:border-cme-border-bright hover:bg-cme-surface-hover/50"
+      onClick={() => router.push(`${ROUTES.CONTENT_DETAIL}/${item.id}`)}
+      role="link"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          router.push(`${ROUTES.CONTENT_DETAIL}/${item.id}`);
+        }
+      }}
+    >
+      <CardContent className="p-5">
+        <div className="space-y-3">
+          <h3 className="text-base font-semibold text-cme-text group-hover:text-cme-primary transition-colors line-clamp-2">
+            {item.title}
+          </h3>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge
+              variant={contentTypeBadgeVariant[item.content_type] || 'outline'}
+            >
+              {contentTypeLabels[item.content_type] || item.content_type}
+            </Badge>
+            <StatusBadge status={item.status} />
           </div>
-        </CardContent>
-      </Card>
-    </Link>
+          <p className="text-xs text-cme-text-muted">
+            {formatDate(item.created_at)}
+          </p>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
 function EmptyState() {
+  const router = useRouter();
+
   return (
     <div className="flex flex-col items-center justify-center py-20">
       <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-cme-surface-hover">
@@ -83,17 +96,16 @@ function EmptyState() {
         Upload your first piece of content to start multiplying it across
         platforms.
       </p>
-      <Link href={ROUTES.CONTENT_UPLOAD} className="mt-6">
-        <Button>
-          <Plus className="mr-2 h-4 w-4" />
-          Upload Your First Content
-        </Button>
-      </Link>
+      <Button className="mt-6" onClick={() => router.push(ROUTES.CONTENT_UPLOAD)}>
+        <Plus className="mr-2 h-4 w-4" />
+        Upload Your First Content
+      </Button>
     </div>
   );
 }
 
 export default function ContentListPage() {
+  const router = useRouter();
   const [items, setItems] = React.useState<ContentUploadResponse[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -129,12 +141,10 @@ export default function ContentListPage() {
             Manage and analyze your uploaded content
           </p>
         </div>
-        <Link href={ROUTES.CONTENT_UPLOAD}>
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
-            Upload New
-          </Button>
-        </Link>
+        <Button onClick={() => router.push(ROUTES.CONTENT_UPLOAD)}>
+          <Plus className="mr-2 h-4 w-4" />
+          Upload New
+        </Button>
       </div>
 
       {/* Error State */}

@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Mail, ArrowLeft, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,6 +11,7 @@ import { ROUTES } from '@/lib/constants';
 import { Logo } from '@/components/layout/logo';
 
 export default function ForgotPasswordPage() {
+  const router = useRouter();
   const { resetPassword } = useAuthStore();
   const [email, setEmail] = React.useState('');
   const [isSubmitting, setIsSubmitting] = React.useState(false);
@@ -67,12 +69,10 @@ export default function ForgotPasswordPage() {
           >
             Try a different email
           </Button>
-          <Link href={ROUTES.LOGIN} className="block">
-            <Button variant="ghost" className="w-full" size="lg">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to login
-            </Button>
-          </Link>
+          <Button variant="ghost" className="w-full" size="lg" onClick={() => router.push(ROUTES.LOGIN)}>
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to login
+          </Button>
         </div>
       </div>
     );

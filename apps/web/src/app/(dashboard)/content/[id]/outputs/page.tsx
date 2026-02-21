@@ -2,7 +2,6 @@
 
 import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { ArrowLeft, CheckCheck, AlertCircle, Filter } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -303,11 +302,9 @@ export default function OutputsPage() {
     return (
       <div className="mx-auto max-w-7xl space-y-6">
         <div className="flex items-center gap-4">
-          <Link href={`${ROUTES.CONTENT_DETAIL}/${contentId}`}>
-            <Button variant="ghost" size="icon">
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-          </Link>
+          <Button variant="ghost" size="icon" onClick={() => router.push(`${ROUTES.CONTENT_DETAIL}/${contentId}`)}>
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
           <h1 className="text-2xl font-bold text-cme-text">Generated Outputs</h1>
         </div>
 
@@ -351,11 +348,9 @@ export default function OutputsPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-4">
-          <Link href={`${ROUTES.CONTENT_DETAIL}/${contentId}`}>
-            <Button variant="ghost" size="icon">
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-          </Link>
+          <Button variant="ghost" size="icon" onClick={() => router.push(`${ROUTES.CONTENT_DETAIL}/${contentId}`)}>
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
           <div>
             <h1 className="text-2xl font-bold text-cme-text">
               {outputData.content_title}

@@ -1,6 +1,7 @@
 'use client';
 
-import Link from 'next/link';
+import * as React from 'react';
+import { useRouter } from 'next/navigation';
 import {
   ArrowUpRight,
   Bot,
@@ -22,6 +23,7 @@ import { Avatar } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { useAuthStore } from '@/stores/auth-store';
 import { useToast } from '@/hooks/use-toast';
+import { apiClient } from '@/lib/api';
 import { SUBSCRIPTION_LABELS, ROUTES } from '@/lib/constants';
 
 // ---------------------------------------------------------------------------
@@ -47,36 +49,47 @@ function SettingsNavCard({
   badge,
   badgeVariant = 'default',
 }: SettingsNavCardProps) {
+  const router = useRouter();
+
   return (
-    <Link href={href}>
-      <Card className="group cursor-pointer hover:border-cme-border-bright transition-all duration-300">
-        <CardContent className="flex items-center gap-4 p-5">
-          <div
-            className="shrink-0 rounded-lg p-2.5 transition-all duration-300 group-hover:scale-110"
-            style={{
-              backgroundColor: `${iconColor}15`,
-              color: iconColor,
-            }}
-          >
-            {icon}
+    <Card
+      className="group cursor-pointer hover:border-cme-border-bright transition-all duration-300"
+      onClick={() => router.push(href)}
+      role="link"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          router.push(href);
+        }
+      }}
+    >
+      <CardContent className="flex items-center gap-4 p-5">
+        <div
+          className="shrink-0 rounded-lg p-2.5 transition-all duration-300 group-hover:scale-110"
+          style={{
+            backgroundColor: `${iconColor}15`,
+            color: iconColor,
+          }}
+        >
+          {icon}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-medium text-cme-text group-hover:text-white transition-colors">
+              {title}
+            </p>
+            {badge && (
+              <Badge variant={badgeVariant} className="text-[10px]">
+                {badge}
+              </Badge>
+            )}
           </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <p className="text-sm font-medium text-cme-text group-hover:text-white transition-colors">
-                {title}
-              </p>
-              {badge && (
-                <Badge variant={badgeVariant} className="text-[10px]">
-                  {badge}
-                </Badge>
-              )}
-            </div>
-            <p className="text-xs text-cme-text-muted">{description}</p>
-          </div>
-          <ArrowUpRight className="ml-auto h-4 w-4 shrink-0 text-cme-text-muted opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-        </CardContent>
-      </Card>
-    </Link>
+          <p className="text-xs text-cme-text-muted">{description}</p>
+        </div>
+        <ArrowUpRight className="ml-auto h-4 w-4 shrink-0 text-cme-text-muted opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+      </CardContent>
+    </Card>
   );
 }
 
@@ -85,12 +98,40 @@ function SettingsNavCard({
 // ---------------------------------------------------------------------------
 
 export default function SettingsPage() {
+  const router = useRouter();
   const { user } = useAuthStore();
-  const { warning: showWarning } = useToast();
+  const { warning: showWarning, error: showError } = useToast();
+  const [billingLoading, setBillingLoading] = React.useState<'portal' | 'checkout' | null>(null);
 
   const subscriptionTier = user?.subscription_tier || 'free';
   const subscriptionLabel =
     SUBSCRIPTION_LABELS[subscriptionTier] || 'Free';
+
+  const handleManageSubscription = async () => {
+    setBillingLoading('portal');
+    try {
+      const res = await apiClient.post<{ portal_url: string }>('/api/v1/billing/portal');
+      window.location.href = res.portal_url;
+    } catch {
+      showError('Billing Error', 'Unable to open subscription management. Please try again.');
+      setBillingLoading(null);
+    }
+  };
+
+  const handleUpgradeToPro = async () => {
+    setBillingLoading('checkout');
+    try {
+      const res = await apiClient.post<{ checkout_url: string }>('/api/v1/billing/create-checkout', {
+        tier: 'pro',
+        success_url: `${window.location.origin}/settings?upgraded=true`,
+        cancel_url: `${window.location.origin}/settings`,
+      });
+      window.location.href = res.checkout_url;
+    } catch {
+      showError('Billing Error', 'Unable to start checkout. Please try again.');
+      setBillingLoading(null);
+    }
+  };
 
   return (
     <div className="max-w-3xl space-y-8 animate-fade-in">
@@ -257,9 +298,22 @@ export default function SettingsPage() {
           </div>
 
           <div className="flex gap-3">
-            <Button variant="outline" onClick={() => showWarning('Coming Soon', 'Subscription management will be available in a future update.')}>Manage Subscription</Button>
+            <Button
+              variant="outline"
+              onClick={handleManageSubscription}
+              isLoading={billingLoading === 'portal'}
+              disabled={billingLoading !== null}
+            >
+              Manage Subscription
+            </Button>
             {subscriptionTier === 'free' && (
-              <Button onClick={() => showWarning('Coming Soon', 'Pro upgrades will be available in a future update.')}>Upgrade to Pro</Button>
+              <Button
+                onClick={handleUpgradeToPro}
+                isLoading={billingLoading === 'checkout'}
+                disabled={billingLoading !== null}
+              >
+                Upgrade to Pro
+              </Button>
             )}
           </div>
         </CardContent>
@@ -308,12 +362,15 @@ export default function SettingsPage() {
           </div>
 
           <div className="pt-2">
-            <Link href={ROUTES.SETTINGS_SECURITY}>
-              <Button variant="ghost" size="sm" className="gap-1.5 text-xs text-cme-text-muted">
-                View all security settings
-                <ArrowUpRight className="h-3 w-3" />
-              </Button>
-            </Link>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1.5 text-xs text-cme-text-muted"
+              onClick={() => router.push(ROUTES.SETTINGS_SECURITY)}
+            >
+              View all security settings
+              <ArrowUpRight className="h-3 w-3" />
+            </Button>
           </div>
         </CardContent>
       </Card>

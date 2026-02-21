@@ -18,7 +18,7 @@ import {
   X,
   CalendarDays,
 } from 'lucide-react';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -269,6 +269,7 @@ function QueueItem({
 // ---------------------------------------------------------------------------
 
 export default function QueuePage() {
+  const router = useRouter();
   const { success: showSuccess, error: showError } = useToast();
 
   const [events, setEvents] = React.useState<ScheduledEventResponse[]>([]);
@@ -442,11 +443,9 @@ export default function QueuePage() {
       {/* Header */}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center gap-3">
-          <Link href={ROUTES.CALENDAR}>
-            <Button variant="ghost" size="icon" className="h-8 w-8">
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          </Link>
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => router.push(ROUTES.CALENDAR)}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
           <div>
             <h1 className="text-3xl font-bold text-cme-text">
               Publishing <span className="gradient-text">Queue</span>
@@ -607,12 +606,10 @@ export default function QueuePage() {
                 ? `No ${statusFilter} events match your filters.`
                 : 'Your publishing queue is empty. Use Auto-Schedule from the calendar to add events.'}
             </p>
-            <Link href={ROUTES.CALENDAR} className="mt-4">
-              <Button variant="outline" size="sm" className="gap-2">
-                <CalendarDays className="h-4 w-4" />
-                Go to Calendar
-              </Button>
-            </Link>
+            <Button variant="outline" size="sm" className="gap-2 mt-4" onClick={() => router.push(ROUTES.CALENDAR)}>
+              <CalendarDays className="h-4 w-4" />
+              Go to Calendar
+            </Button>
           </CardContent>
         </Card>
       ) : (

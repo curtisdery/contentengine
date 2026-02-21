@@ -13,7 +13,7 @@ import {
   Loader2,
   ListChecks,
 } from 'lucide-react';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -121,6 +121,7 @@ function StatItem({ label, value, icon, color }: StatItemProps) {
 // ---------------------------------------------------------------------------
 
 export default function CalendarPage() {
+  const router = useRouter();
   const { success: showSuccess, error: showError } = useToast();
 
   // State
@@ -404,12 +405,10 @@ export default function CalendarPage() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          <Link href={ROUTES.CALENDAR_QUEUE}>
-            <Button variant="outline" size="sm" className="gap-2">
-              <ListChecks className="h-4 w-4" />
-              Queue
-            </Button>
-          </Link>
+          <Button variant="outline" size="sm" className="gap-2" onClick={() => router.push(ROUTES.CALENDAR_QUEUE)}>
+            <ListChecks className="h-4 w-4" />
+            Queue
+          </Button>
           <Button
             variant="secondary"
             size="sm"

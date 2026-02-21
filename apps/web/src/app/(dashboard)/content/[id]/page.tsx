@@ -2,7 +2,6 @@
 
 import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { ArrowLeft, RefreshCw, AlertCircle, Sparkles, FileText } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -159,11 +158,9 @@ export default function ContentDetailPage() {
     return (
       <div className="mx-auto max-w-4xl space-y-6">
         <div className="flex items-center gap-4">
-          <Link href={ROUTES.CONTENT}>
-            <Button variant="ghost" size="icon">
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-          </Link>
+          <Button variant="ghost" size="icon" onClick={() => router.push(ROUTES.CONTENT)}>
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
           <h1 className="text-2xl font-bold text-cme-text">Content Detail</h1>
         </div>
 
@@ -206,11 +203,9 @@ export default function ContentDetailPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-4">
-          <Link href={ROUTES.CONTENT}>
-            <Button variant="ghost" size="icon">
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-          </Link>
+          <Button variant="ghost" size="icon" onClick={() => router.push(ROUTES.CONTENT)}>
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
           <div>
             <h1 className="text-2xl font-bold text-cme-text">
               {content.title}
@@ -334,11 +329,13 @@ export default function ContentDetailPage() {
                   Review, edit, and approve your generated content
                 </p>
               </div>
-              <Link href={`${ROUTES.CONTENT_DETAIL}/${id}/outputs`}>
-                <Button variant="outline" size="sm">
-                  View Outputs
-                </Button>
-              </Link>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push(`${ROUTES.CONTENT_DETAIL}/${id}/outputs`)}
+              >
+                View Outputs
+              </Button>
             </div>
           </CardContent>
         </Card>

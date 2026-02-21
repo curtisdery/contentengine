@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
   Bot,
@@ -328,6 +328,7 @@ function PlatformAutopilotCard({
 // ---------------------------------------------------------------------------
 
 export default function AutopilotPage() {
+  const router = useRouter();
   const {
     success: showSuccess,
     error: showError,
@@ -442,11 +443,9 @@ export default function AutopilotPage() {
     <div className="max-w-4xl space-y-8 animate-fade-in">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Link href={ROUTES.SETTINGS}>
-          <Button variant="ghost" size="icon" className="h-8 w-8">
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-        </Link>
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => router.push(ROUTES.SETTINGS)}>
+          <ArrowLeft className="h-4 w-4" />
+        </Button>
         <div>
           <h1 className="text-3xl font-bold text-cme-text">
             <span className="gradient-text">Autopilot</span>
@@ -555,12 +554,10 @@ export default function AutopilotPage() {
                 Connect platforms and start reviewing generated outputs to begin
                 building trust for autopilot.
               </p>
-              <Link href={ROUTES.SETTINGS_CONNECTIONS}>
-                <Button variant="outline" size="sm" className="gap-1.5">
-                  <Zap className="h-3.5 w-3.5" />
-                  Connect Platforms
-                </Button>
-              </Link>
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={() => router.push(ROUTES.SETTINGS_CONNECTIONS)}>
+                <Zap className="h-3.5 w-3.5" />
+                Connect Platforms
+              </Button>
             </CardContent>
           </Card>
         )}

@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
   Clock,
@@ -322,6 +322,7 @@ function AuditEntry({ entry }: AuditEntryProps) {
 // ---------------------------------------------------------------------------
 
 export default function SecurityPage() {
+  const router = useRouter();
   const {
     success: showSuccess,
     error: showError,
@@ -471,11 +472,9 @@ export default function SecurityPage() {
     <div className="max-w-3xl space-y-8 animate-fade-in">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Link href={ROUTES.SETTINGS}>
-          <Button variant="ghost" size="icon" className="h-8 w-8">
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-        </Link>
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => router.push(ROUTES.SETTINGS)}>
+          <ArrowLeft className="h-4 w-4" />
+        </Button>
         <div>
           <h1 className="text-3xl font-bold text-cme-text">
             <span className="gradient-text">Security</span>

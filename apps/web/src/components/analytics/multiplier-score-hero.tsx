@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { cn, formatNumber } from '@/lib/utils';
 import { Card } from '@/components/ui/card';
 import { ArrowUpRight, Zap } from 'lucide-react';
@@ -58,6 +58,7 @@ function MultiplierScoreHero({
   platformCount,
   topContent,
 }: MultiplierScoreHeroProps) {
+  const router = useRouter();
   const [isVisible, setIsVisible] = React.useState(false);
   const animatedValue = useCountUp(value, 1500, isVisible);
   const animatedReach = useCountUp(totalReach, 2000, isVisible);
@@ -180,17 +181,23 @@ function MultiplierScoreHero({
           )}
         >
           {topContent.slice(0, 3).map((content, index) => (
-            <Link
+            <Card
               key={content.content_id}
-              href={`/analytics/${content.content_id}`}
+              className={cn(
+                'group relative overflow-hidden transition-all duration-300',
+                'hover:border-cme-primary/30 cursor-pointer',
+                index === 0 && 'sm:border-cme-primary/20'
+              )}
+              onClick={() => router.push(`/analytics/${content.content_id}`)}
+              role="link"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  router.push(`/analytics/${content.content_id}`);
+                }
+              }}
             >
-              <Card
-                className={cn(
-                  'group relative overflow-hidden transition-all duration-300',
-                  'hover:border-cme-primary/30 cursor-pointer',
-                  index === 0 && 'sm:border-cme-primary/20'
-                )}
-              >
                 <div className="absolute inset-0 bg-gradient-to-r from-cme-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                 <div className="relative flex items-center gap-3 p-4">
                   <div
@@ -219,7 +226,6 @@ function MultiplierScoreHero({
                   <ArrowUpRight className="h-4 w-4 shrink-0 text-cme-text-muted opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
               </Card>
-            </Link>
           ))}
         </div>
       )}

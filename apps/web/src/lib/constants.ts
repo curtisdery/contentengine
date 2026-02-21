@@ -30,6 +30,7 @@ export const ROUTES = {
 export const TOAST_DURATION = 5000;
 
 export const SUBSCRIPTION_LABELS: Record<string, string> = {
+  free: 'Free',
   starter: 'Starter',
   growth: 'Growth',
   pro: 'Pro',
