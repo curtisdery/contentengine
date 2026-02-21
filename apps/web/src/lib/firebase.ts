@@ -12,7 +12,8 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
-function getFirebaseApp(): FirebaseApp {
+function getFirebaseApp(): FirebaseApp | null {
+  if (!firebaseConfig.apiKey) return null;
   if (getApps().length > 0) {
     return getApps()[0];
   }
@@ -20,11 +21,11 @@ function getFirebaseApp(): FirebaseApp {
 }
 
 const app = getFirebaseApp();
-export const auth: Auth = getAuth(app);
-export const storage: FirebaseStorage = getStorage(app);
+export const auth: Auth = app ? getAuth(app) : ({} as Auth);
+export const storage: FirebaseStorage = app ? getStorage(app) : ({} as FirebaseStorage);
 
 export async function getFirebaseAnalytics() {
-  if (typeof window === 'undefined') return null;
+  if (typeof window === 'undefined' || !app) return null;
   const { getAnalytics, isSupported } = await import('firebase/analytics');
   const supported = await isSupported();
   if (!supported) return null;
@@ -32,7 +33,7 @@ export async function getFirebaseAnalytics() {
 }
 
 export async function getFirebaseMessaging() {
-  if (typeof window === 'undefined') return null;
+  if (typeof window === 'undefined' || !app) return null;
   const { getMessaging, isSupported } = await import('firebase/messaging');
   const supported = await isSupported();
   if (!supported) return null;
