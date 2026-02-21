@@ -1,4 +1,4 @@
-.PHONY: help dev up down logs db-migrate db-upgrade db-downgrade test lint clean setup
+.PHONY: help dev up down logs db-migrate db-upgrade db-downgrade test test-e2e lint clean setup
 
 # Default target
 help: ## Show this help message
@@ -71,6 +71,9 @@ test-api: ## Run API tests only
 
 test-web: ## Run Web tests only
 	cd apps/web && npm test
+
+test-e2e: ## Run E2E tests
+	cd apps/web && npx playwright test
 
 # ---- Linting ----
 lint: ## Run linters

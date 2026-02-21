@@ -49,6 +49,11 @@ logs/
 *.key
 secrets/
 
+# Playwright
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/playwright/.cache/
+
 # OS
 Thumbs.db
 .vercel

@@ -129,6 +129,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: async () => {
+    // E2E test bypass
+    if (typeof window !== 'undefined' && (window as any).__E2E_AUTH_MOCK__) {
+      set({ user: null, isAuthenticated: false, isLoading: false });
+      return;
+    }
+
     try {
       await apiClient.post('/api/v1/auth/logout');
     } catch {
@@ -156,6 +162,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   initialize: () => {
+    // E2E test bypass — authenticated mock
+    if (typeof window !== 'undefined' && (window as any).__E2E_AUTH_MOCK__) {
+      set({ user: (window as any).__E2E_MOCK_USER__, isAuthenticated: true, isLoading: false });
+      return () => {};
+    }
+    // E2E test bypass — unauthenticated mock
+    if (typeof window !== 'undefined' && (window as any).__E2E_SKIP_AUTH__) {
+      set({ user: null, isAuthenticated: false, isLoading: false });
+      return () => {};
+    }
+
     const unsubscribe = onIdTokenChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         try {
