@@ -5,6 +5,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.database import get_db
 from app.models.user import User
 from app.models.organization import Organization, OrganizationMember, Workspace
@@ -13,6 +14,21 @@ from app.utils.exceptions import AuthenticationError
 from app.utils.firebase import verify_firebase_token
 
 bearer_scheme = HTTPBearer(auto_error=False)
+
+# Dev mode constants
+_DEV_TOKEN = "dev-token"
+_DEV_EMAIL = "dev@pandocast.local"
+_DEV_NAME = "Dev User"
+_DEV_FIREBASE_UID = "dev-local-uid"
+
+
+def _is_dev_mode() -> bool:
+    """Check if running in development mode without Firebase configured."""
+    settings = get_settings()
+    return (
+        settings.ENVIRONMENT == "development"
+        and not settings.FIREBASE_SERVICE_ACCOUNT_BASE64
+    )
 
 
 def _slugify(text: str) -> str:
@@ -40,11 +56,21 @@ async def get_current_user(
 
     token = credentials.credentials
 
-    # Verify the Firebase ID token
-    claims = verify_firebase_token(token)
-    firebase_uid: str = claims["uid"]
-    email: str | None = claims.get("email")
-    display_name: str | None = claims.get("name")
+    # Dev mode bypass: accept dev-token when Firebase is not configured
+    if _is_dev_mode() and token == _DEV_TOKEN:
+        firebase_uid = _DEV_FIREBASE_UID
+        email: str | None = _DEV_EMAIL
+        display_name: str | None = _DEV_NAME
+        avatar_url: str | None = None
+        email_verified = True
+    else:
+        # Verify the Firebase ID token
+        claims = verify_firebase_token(token)
+        firebase_uid = claims["uid"]
+        email = claims.get("email")
+        display_name = claims.get("name")
+        avatar_url = claims.get("picture")
+        email_verified = claims.get("email_verified", False)
 
     # 1. Look up by firebase_uid
     result = await db.execute(
@@ -61,7 +87,7 @@ async def get_current_user(
         if user is not None:
             # Link the existing user to their Firebase UID
             user.firebase_uid = firebase_uid
-            if not user.email_verified and claims.get("email_verified"):
+            if not user.email_verified and email_verified:
                 user.email_verified = True
             await db.flush()
 
@@ -79,8 +105,8 @@ async def get_current_user(
             email=email,
             firebase_uid=firebase_uid,
             full_name=full_name,
-            avatar_url=claims.get("picture"),
-            email_verified=claims.get("email_verified", False),
+            avatar_url=avatar_url,
+            email_verified=email_verified,
         )
         db.add(user)
         await db.flush()

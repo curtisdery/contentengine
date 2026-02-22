@@ -173,6 +173,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       return () => {};
     }
 
+    // Dev mode: auto-authenticate when Firebase is not configured
+    if (process.env.NODE_ENV === 'development' && !process.env.NEXT_PUBLIC_FIREBASE_API_KEY) {
+      (async () => {
+        try {
+          const user = await apiClient.get<User>('/api/v1/auth/me');
+          set({ user, isAuthenticated: true, isLoading: false });
+        } catch {
+          set({ user: null, isAuthenticated: false, isLoading: false });
+        }
+      })();
+      return () => {};
+    }
+
     const unsubscribe = onIdTokenChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         try {

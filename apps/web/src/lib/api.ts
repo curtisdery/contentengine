@@ -22,7 +22,13 @@ class ApiClient {
 
   private async getAccessToken(): Promise<string | null> {
     const currentUser = auth.currentUser;
-    if (!currentUser) return null;
+    if (!currentUser) {
+      // Dev mode: no Firebase configured, use dev token for local development
+      if (process.env.NODE_ENV === 'development' && !process.env.NEXT_PUBLIC_FIREBASE_API_KEY) {
+        return 'dev-token';
+      }
+      return null;
+    }
     return currentUser.getIdToken();
   }
 
