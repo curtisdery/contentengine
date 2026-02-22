@@ -618,27 +618,31 @@ class TestPublisherRegistry:
             PublisherRegistry._publishers = original
 
     @pytest.mark.asyncio
-    async def test_twitter_publisher_stub_returns_not_implemented(self):
-        """Stub publishers should return success=False with a helpful error."""
+    async def test_twitter_publisher_returns_error_without_credentials(self):
+        """Real publishers should return success=False when credentials are missing."""
         publisher = TwitterPublisher()
         connection = MagicMock()
+        connection.access_token_encrypted = None
+        connection.refresh_token_encrypted = None
 
         result = await publisher.publish("test content", {}, connection)
 
         assert result["success"] is False
         assert result["post_id"] is None
-        assert "not yet implemented" in result["error"]
+        assert result["error"] is not None
 
     @pytest.mark.asyncio
-    async def test_linkedin_publisher_stub_returns_not_implemented(self):
-        """Stub publishers should return success=False with a helpful error."""
+    async def test_linkedin_publisher_returns_error_without_credentials(self):
+        """Real publishers should return success=False when credentials are missing."""
         publisher = LinkedInPublisher()
         connection = MagicMock()
+        connection.access_token_encrypted = None
+        connection.refresh_token_encrypted = None
 
         result = await publisher.publish("test content", {}, connection)
 
         assert result["success"] is False
-        assert "not yet implemented" in result["error"]
+        assert result["error"] is not None
 
 
 # ---------------------------------------------------------------------------
