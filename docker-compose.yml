@@ -56,6 +56,27 @@ services:
       - ./apps/api:/app
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
+  # ---- Background Worker ----
+  worker:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: pando-worker
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-pando}:${POSTGRES_PASSWORD:-pando_dev_password}@postgres:5432/${POSTGRES_DB:-pandocast}
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./apps/api:/app
+    command: python -m app.worker
+
   # ---- Next.js Frontend ----
   web:
     build:

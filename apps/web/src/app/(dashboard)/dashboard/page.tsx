@@ -19,7 +19,11 @@ import { useAuthStore } from '@/stores/auth-store';
 import { cn } from '@/lib/utils';
 import { apiClient } from '@/lib/api';
 import { ROUTES } from '@/lib/constants';
-import type { AutopilotSummaryResponse } from '@/types/api';
+import type {
+  AnalyticsDashboardResponse,
+  AutopilotSummaryResponse,
+  PlatformConnectionResponse,
+} from '@/types/api';
 
 interface StatCardProps {
   title: string;
@@ -28,16 +32,21 @@ interface StatCardProps {
   description: string;
   glow: 'primary' | 'secondary' | 'none';
   accentColor: string;
+  loading?: boolean;
 }
 
-function StatCard({ title, value, icon, description, glow, accentColor }: StatCardProps) {
+function StatCard({ title, value, icon, description, glow, accentColor, loading }: StatCardProps) {
   return (
     <Card glow={glow} className="group hover:border-cme-border-bright transition-all duration-300">
       <CardContent className="p-6">
         <div className="flex items-start justify-between">
           <div className="space-y-3">
             <p className="text-sm font-medium text-cme-text-muted">{title}</p>
-            <p className="font-mono text-3xl font-bold text-cme-text">{value}</p>
+            {loading ? (
+              <div className="h-9 w-16 animate-pulse rounded-md bg-cme-border/50" />
+            ) : (
+              <p className="font-mono text-3xl font-bold text-cme-text">{value}</p>
+            )}
             <p className="text-xs text-cme-text-muted">{description}</p>
           </div>
           <div
@@ -175,38 +184,72 @@ export default function DashboardPage() {
   const router = useRouter();
   const { user } = useAuthStore();
 
+  const [dashboard, setDashboard] = React.useState<AnalyticsDashboardResponse | null>(null);
+  const [connections, setConnections] = React.useState<PlatformConnectionResponse[] | null>(null);
+  const [isLoading, setIsLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    async function loadDashboardData() {
+      try {
+        const [dashboardData, connectionsData] = await Promise.all([
+          apiClient.get<AnalyticsDashboardResponse>('/api/v1/analytics/dashboard'),
+          apiClient.get<PlatformConnectionResponse[]>('/api/v1/connections'),
+        ]);
+        setDashboard(dashboardData);
+        setConnections(connectionsData);
+      } catch {
+        // If API is unavailable, leave as null (will show loading then fallback)
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    loadDashboardData();
+  }, []);
+
+  const activeConnections = connections?.filter((c) => c.is_active).length ?? 0;
+  const hasContent = dashboard ? dashboard.total_content_pieces > 0 : false;
+
+  const multiplierDisplay =
+    dashboard && dashboard.best_multiplier_score > 0
+      ? `${dashboard.best_multiplier_score}x`
+      : '\u2014';
+
   const stats: StatCardProps[] = [
     {
       title: 'Content Uploads',
-      value: '0',
+      value: dashboard ? String(dashboard.total_content_pieces) : '0',
       icon: <Upload className="h-6 w-6" />,
       description: 'Total pieces uploaded',
       glow: 'primary',
       accentColor: '#6c5ce7',
+      loading: isLoading,
     },
     {
       title: 'Outputs Generated',
-      value: '0',
+      value: dashboard ? String(dashboard.total_outputs_generated) : '0',
       icon: <FileOutput className="h-6 w-6" />,
       description: 'Repurposed content pieces',
       glow: 'secondary',
       accentColor: '#00cec9',
+      loading: isLoading,
     },
     {
       title: 'Platforms Connected',
-      value: '0',
+      value: String(activeConnections),
       icon: <Globe className="h-6 w-6" />,
       description: 'Active integrations',
       glow: 'none',
       accentColor: '#00b894',
+      loading: isLoading,
     },
     {
       title: 'Multiplier Score',
-      value: '\u2014',
+      value: multiplierDisplay,
       icon: <Zap className="h-6 w-6" />,
       description: 'Content amplification ratio',
       glow: 'none',
       accentColor: '#fdcb6e',
+      loading: isLoading,
     },
   ];
 
@@ -235,41 +278,85 @@ export default function DashboardPage() {
       {/* Autopilot Status Widget */}
       <AutopilotWidget />
 
-      {/* Empty State / CTA */}
-      <Card
-        glow="primary"
-        className="relative overflow-hidden cursor-pointer group"
-        onClick={() => router.push(ROUTES.CONTENT_UPLOAD)}
-        role="link"
-        tabIndex={0}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            router.push(ROUTES.CONTENT_UPLOAD);
-          }
-        }}
-      >
-        <div className="absolute inset-0 bg-gradient-to-br from-cme-primary/5 via-transparent to-cme-secondary/5 pointer-events-none" />
-        <CardContent className="relative flex flex-col items-center justify-center py-16 text-center">
-          <div className="mb-6 rounded-2xl bg-cme-primary/10 p-5 transition-transform duration-300 group-hover:scale-110">
-            <Sparkles className="h-10 w-10 text-cme-primary" />
-          </div>
-          <h2 className="mb-2 text-2xl font-semibold text-cme-text">
-            Upload your first piece of content
-          </h2>
-          <p className="mb-8 max-w-md text-cme-text-muted">
-            Start multiplying your reach. Upload a blog post, video transcript,
-            or any content and let Pandocast transform it for every platform.
-          </p>
-          <Button
-            size="lg"
-            className="gap-2"
-          >
-            Get Started
-            <ArrowUpRight className="h-4 w-4" />
-          </Button>
-        </CardContent>
-      </Card>
+      {/* Empty State / CTA — only show when user has no content */}
+      {!isLoading && !hasContent && (
+        <Card
+          glow="primary"
+          className="relative overflow-hidden cursor-pointer group"
+          onClick={() => router.push(ROUTES.CONTENT_UPLOAD)}
+          role="link"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              router.push(ROUTES.CONTENT_UPLOAD);
+            }
+          }}
+        >
+          <div className="absolute inset-0 bg-gradient-to-br from-cme-primary/5 via-transparent to-cme-secondary/5 pointer-events-none" />
+          <CardContent className="relative flex flex-col items-center justify-center py-16 text-center">
+            <div className="mb-6 rounded-2xl bg-cme-primary/10 p-5 transition-transform duration-300 group-hover:scale-110">
+              <Sparkles className="h-10 w-10 text-cme-primary" />
+            </div>
+            <h2 className="mb-2 text-2xl font-semibold text-cme-text">
+              Upload your first piece of content
+            </h2>
+            <p className="mb-8 max-w-md text-cme-text-muted">
+              Start multiplying your reach. Upload a blog post, video transcript,
+              or any content and let Pandocast transform it for every platform.
+            </p>
+            <Button
+              size="lg"
+              className="gap-2"
+            >
+              Get Started
+              <ArrowUpRight className="h-4 w-4" />
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Recent Activity — show when user has content */}
+      {!isLoading && hasContent && dashboard && (
+        <Card className="hover:border-cme-border-bright transition-all duration-300">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-cme-text">
+                Recent Activity
+              </h2>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-cme-text-muted hover:text-cme-text gap-1"
+                onClick={() => router.push(ROUTES.ANALYTICS)}
+              >
+                View Analytics
+                <ArrowUpRight className="h-3 w-3" />
+              </Button>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-lg bg-cme-surface/50 p-4">
+                <p className="text-xs text-cme-text-muted mb-1">Published</p>
+                <p className="font-mono text-xl font-bold text-cme-text">
+                  {dashboard.total_published}
+                </p>
+              </div>
+              <div className="rounded-lg bg-cme-surface/50 p-4">
+                <p className="text-xs text-cme-text-muted mb-1">Total Reach</p>
+                <p className="font-mono text-xl font-bold text-cme-text">
+                  {dashboard.total_reach.toLocaleString()}
+                </p>
+              </div>
+              <div className="rounded-lg bg-cme-surface/50 p-4">
+                <p className="text-xs text-cme-text-muted mb-1">Engagements</p>
+                <p className="font-mono text-xl font-bold text-cme-text">
+                  {dashboard.total_engagements.toLocaleString()}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Quick Actions */}
       <div>

@@ -61,6 +61,10 @@ db-reset: ## Reset database (WARNING: destroys all data)
 	cd apps/api && alembic upgrade head
 	@echo "Database reset complete."
 
+# ---- Worker ----
+worker: ## Start the background publishing worker
+	cd apps/api && python -m app.worker
+
 # ---- Testing ----
 test: ## Run all tests
 	cd apps/api && python -m pytest tests/ -v
