@@ -5,24 +5,24 @@ Pandocast (PANDO) — a platform that lets solo content creators upload one piec
 
 ## Architecture
 Monorepo with two apps:
-- `apps/api/` — Python FastAPI backend (port 8000)
+- `apps/api/` — Python FastAPI backend on Cloud Run (port 8000)
 - `apps/web/` — Next.js 14 frontend (port 3000)
 
-Infrastructure: PostgreSQL 16, Redis 7
+Infrastructure: Firestore (native mode), Cloud Storage for Firebase, Cloud Tasks
 
 ## Quick Start
 ```bash
 make setup    # First-time setup
-make dev      # Start Postgres + Redis, then manually run API and Web
+make dev      # Start API and Web locally
 make up       # Start everything via Docker Compose
 ```
 
 ## Key Commands
 - `make test` — Run all tests
-- `make db-migrate msg="description"` — Create new migration
-- `make db-upgrade` — Apply migrations
 - `make lint` — Run linters
 - `make logs` — Tail all service logs
+- `cd functions && npx vitest run` — Run Cloud Functions tests (313 tests)
+- `cd apps/web/e2e && npx playwright test` — Run E2E tests (109 tests)
 
 ## API Development
 ```bash
@@ -31,6 +31,15 @@ uvicorn app.main:app --reload --port 8000
 ```
 API docs at: http://localhost:8000/docs
 
+## Cloud Functions
+```bash
+cd functions
+npm run build          # Compile TypeScript
+npx vitest run         # Run tests
+firebase deploy --only functions  # Deploy to Firebase
+```
+78 Cloud Functions (2nd gen) deployed to `pandocast-af179` (us-central1).
+
 ## Web Development
 ```bash
 cd apps/web
@@ -38,24 +47,27 @@ npm run dev
 ```
 Dashboard at: http://localhost:3000
 
+Frontend calls Cloud Functions via `httpsCallable` — see `apps/web/src/lib/cloud-functions.ts`.
+
 ## Environment
 Copy `.env.example` to `.env` before running. Never commit `.env`.
+Cloud Functions env: `functions/.env` (config strings) + Secret Manager (secrets).
 
 ## API Design
-- All endpoints under `/api/v1/`
-- JWT auth with Bearer tokens
-- Pydantic v2 for validation
-- SQLAlchemy 2.0 async models
+- FastAPI backend: endpoints under `/api/v1/`, Pydantic v2 validation
+- Cloud Functions: `onCall` (callable) + `onRequest` (webhooks) + `onSchedule` (cron)
+- Firebase Auth for authentication
+- API-first: every feature is an API endpoint first
 
 ## Database
-- PostgreSQL with async (asyncpg)
-- Alembic for migrations
+- Firestore (native mode) — no PostgreSQL, no Redis
 - All IDs are UUIDs
+- Collections defined in `functions/src/shared/collections.ts`
 
 ## Code Standards
 - Python: type hints everywhere, async by default
 - TypeScript: strict mode, no `any` types
-- Test new endpoints with pytest
+- Test new endpoints with pytest (API) or vitest (Cloud Functions)
 - API-first: every feature is an API endpoint first
 
 ---
@@ -87,10 +99,11 @@ You are a Strategic AI Engineering Copilot for Pandocast. The operator is a vibe
 ### Validated Architecture (treat as decided facts — no hedging)
 
 - Monorepo: FastAPI backend + Next.js 14 frontend. Decided.
-- PostgreSQL 16 + Redis 7. Decided.
-- JWT auth, Pydantic v2, SQLAlchemy 2.0 async, Alembic, UUIDs. Decided.
-- Firebase Cloud Functions for backend services. Decided.
-- API-first: every feature is an API endpoint first. Decided.
+- Database: Firestore (native mode). No PostgreSQL. No Redis. Decided.
+- Backend: FastAPI on Cloud Run. Background jobs via Cloud Tasks + worker service. Decided.
+- Storage: Cloud Storage for Firebase. Decided.
+- Billing: Stripe. Decided.
+- AI: Anthropic Claude API via FORGE cognitive architecture. Decided.
 - E2E tests: 109/109 passing. Don't break them.
 
 ### FORGE Cognitive Architecture (AI layer for content transformation)
