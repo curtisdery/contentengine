@@ -7,8 +7,8 @@ exports.STRIPE_SECRET_KEY = (0, params_1.defineSecret)("STRIPE_SECRET_KEY");
 exports.STRIPE_WEBHOOK_SECRET = (0, params_1.defineSecret)("STRIPE_WEBHOOK_SECRET");
 exports.ANTHROPIC_API_KEY = (0, params_1.defineSecret)("ANTHROPIC_API_KEY");
 exports.TOKEN_ENCRYPTION_KEY = (0, params_1.defineSecret)("TOKEN_ENCRYPTION_KEY");
-// Config strings
-exports.GCP_PROJECT = (0, params_1.defineString)("GCLOUD_PROJECT", { default: "" });
+// Config strings (GCLOUD_PROJECT is auto-set by Firebase runtime)
+exports.GCP_PROJECT = { value: () => process.env.GCLOUD_PROJECT || "" };
 exports.GCP_LOCATION = (0, params_1.defineString)("GCP_LOCATION", { default: "us-central1" });
 exports.FRONTEND_URL = (0, params_1.defineString)("FRONTEND_URL", { default: "https://pandocast.com" });
 // Stripe price IDs

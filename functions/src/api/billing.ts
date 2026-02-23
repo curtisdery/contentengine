@@ -33,7 +33,7 @@ async function getOrgSubscription(organizationId: string) {
 }
 
 // ─── createCheckout ──────────────────────────────────────────────────────────
-export const createCheckout = onCall({ secrets: [STRIPE_SECRET_KEY, STRIPE_PRICE_GROWTH, STRIPE_PRICE_PRO] }, async (request) => {
+export const createCheckout = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
   try {
     const ctx = await verifyAuth(request);
     const input = validate(CreateCheckoutSchema, request.data);

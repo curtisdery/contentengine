@@ -31,7 +31,7 @@ async function getOrgSubscription(organizationId) {
     return { id: subSnap.docs[0].id, ref: subSnap.docs[0].ref, data: subSnap.docs[0].data() };
 }
 // ─── createCheckout ──────────────────────────────────────────────────────────
-exports.createCheckout = (0, https_1.onCall)({ secrets: [env_js_1.STRIPE_SECRET_KEY, env_js_1.STRIPE_PRICE_GROWTH, env_js_1.STRIPE_PRICE_PRO] }, async (request) => {
+exports.createCheckout = (0, https_1.onCall)({ secrets: [env_js_1.STRIPE_SECRET_KEY] }, async (request) => {
     try {
         const ctx = await (0, auth_js_1.verifyAuth)(request);
         const input = (0, validate_js_1.validate)(schemas_js_1.CreateCheckoutSchema, request.data);

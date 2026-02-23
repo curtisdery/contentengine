@@ -6,8 +6,8 @@ export const STRIPE_WEBHOOK_SECRET = defineSecret("STRIPE_WEBHOOK_SECRET");
 export const ANTHROPIC_API_KEY = defineSecret("ANTHROPIC_API_KEY");
 export const TOKEN_ENCRYPTION_KEY = defineSecret("TOKEN_ENCRYPTION_KEY");
 
-// Config strings
-export const GCP_PROJECT = defineString("GCLOUD_PROJECT", { default: "" });
+// Config strings (GCLOUD_PROJECT is auto-set by Firebase runtime)
+export const GCP_PROJECT = { value: () => process.env.GCLOUD_PROJECT || "" };
 export const GCP_LOCATION = defineString("GCP_LOCATION", { default: "us-central1" });
 export const FRONTEND_URL = defineString("FRONTEND_URL", { default: "https://pandocast.com" });
 
