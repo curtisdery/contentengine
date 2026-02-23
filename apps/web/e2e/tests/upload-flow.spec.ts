@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { setupAuthenticated } from '../fixtures/auth';
+import { MOCK_ANALYTICS_EMPTY } from '../helpers/mock-responses';
 
 test.describe('Upload Flow', () => {
   test.beforeEach(async ({ page }) => {
@@ -7,11 +8,16 @@ test.describe('Upload Flow', () => {
   });
 
   test('dashboard CTA card navigates to upload page on click', async ({ page }) => {
+    // Override analytics to return empty dashboard so the CTA card is visible
+    await page.route('**/api/v1/analytics**', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_ANALYTICS_EMPTY) })
+    );
+
     await page.goto('/dashboard');
     await expect(page.getByText(/welcome/i)).toBeVisible({ timeout: 10000 });
 
     // The "Upload your first piece of content" CTA card should be visible
-    await expect(page.getByText('Upload your first piece of content')).toBeVisible();
+    await expect(page.getByText('Upload your first piece of content')).toBeVisible({ timeout: 10000 });
 
     // Click the CTA card itself (not just the button)
     await page.getByText('Upload your first piece of content').click();
@@ -22,6 +28,11 @@ test.describe('Upload Flow', () => {
   });
 
   test('dashboard Get Started button navigates to upload page', async ({ page }) => {
+    // Override analytics to return empty dashboard so the CTA card is visible
+    await page.route('**/api/v1/analytics**', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_ANALYTICS_EMPTY) })
+    );
+
     await page.goto('/dashboard');
     await expect(page.getByText(/welcome/i)).toBeVisible({ timeout: 10000 });
 

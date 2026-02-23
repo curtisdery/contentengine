@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 import structlog
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -6,6 +8,7 @@ from fastapi.responses import JSONResponse
 from app.api.v1.router import api_router
 from app.config import get_settings
 from app.middleware.logging import RequestLoggingMiddleware
+from app.services.publisher import init_publishers
 from app.utils.exceptions import PandocastException
 
 settings = get_settings()
@@ -26,12 +29,23 @@ structlog.configure(
     cache_logger_on_first_use=True,
 )
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Initialize services on startup, clean up on shutdown."""
+    init_publishers()
+    structlog.get_logger().info("app_startup", version=settings.APP_VERSION)
+    yield
+    structlog.get_logger().info("app_shutdown")
+
+
 app = FastAPI(
     title="Pandocast API",
     description="Upload once. Pando everywhere. Analyzes your content's DNA, preserves your brand voice, and generates 18 platform-native formats.",
     version=settings.APP_VERSION,
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 # CORS middleware

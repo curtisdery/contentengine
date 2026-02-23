@@ -174,19 +174,47 @@ test.describe('Authenticated App (real backend)', () => {
 
     await expect(page.getByText('Content Uploads')).toBeVisible({ timeout: 10000 });
     await expect(page.getByText('Quick Actions')).toBeVisible();
-    await expect(page.getByText('Upload your first piece of content')).toBeVisible();
   });
 
-  test('dashboard: CTA card navigates to upload', async ({ page }) => {
+  test('dashboard: CTA card navigates to upload (empty state)', async ({ page }) => {
+    // Mock analytics to ensure empty state so CTA card appears
+    await page.route('**/api/v1/analytics**', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          total_content_pieces: 0, total_outputs_generated: 0, total_published: 0,
+          total_reach: 0, total_engagements: 0, avg_multiplier_score: 0,
+          best_multiplier_score: 0, platforms_active: 0,
+          top_performing_content: [], recent_performance: [],
+        }),
+      })
+    );
+
     await page.goto('/dashboard');
     await expect(page.getByText(/welcome/i)).toBeVisible({ timeout: 15000 });
 
+    await expect(page.getByText('Upload your first piece of content')).toBeVisible({ timeout: 10000 });
     await page.getByText('Upload your first piece of content').click();
     await page.waitForURL('**/content/upload', { timeout: 5000 });
     expect(page.url()).toContain('/content/upload');
   });
 
-  test('dashboard: Get Started button navigates to upload', async ({ page }) => {
+  test('dashboard: Get Started button navigates to upload (empty state)', async ({ page }) => {
+    // Mock analytics to ensure empty state so Get Started button appears
+    await page.route('**/api/v1/analytics**', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          total_content_pieces: 0, total_outputs_generated: 0, total_published: 0,
+          total_reach: 0, total_engagements: 0, avg_multiplier_score: 0,
+          best_multiplier_score: 0, platforms_active: 0,
+          top_performing_content: [], recent_performance: [],
+        }),
+      })
+    );
+
     await page.goto('/dashboard');
     await expect(page.getByText(/welcome/i)).toBeVisible({ timeout: 15000 });
 

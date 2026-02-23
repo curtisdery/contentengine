@@ -206,7 +206,7 @@ export default function DashboardPage() {
     loadDashboardData();
   }, []);
 
-  const activeConnections = connections?.filter((c) => c.is_active).length ?? 0;
+  const activeConnections = Array.isArray(connections) ? connections.filter((c) => c.is_active).length : 0;
   const hasContent = dashboard ? dashboard.total_content_pieces > 0 : false;
 
   const multiplierDisplay =

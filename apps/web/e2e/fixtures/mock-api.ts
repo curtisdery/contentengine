@@ -4,14 +4,25 @@ import {
   MOCK_CONTENT_LIST,
   MOCK_AUTOPILOT_SUMMARY,
   MOCK_ANALYTICS_SUMMARY,
+  MOCK_CONNECTIONS,
   MOCK_SIGNUP_RESPONSE,
   MOCK_LOGOUT_RESPONSE,
 } from '../helpers/mock-responses';
 
 /**
  * Mock all API routes with authenticated responses.
+ *
+ * NOTE: Playwright matches routes in LIFO order (most recently registered first).
+ * The catch-all must be registered FIRST so it has the lowest priority, allowing
+ * specific routes registered after it to take precedence.
  */
 export async function mockAllApiRoutes(page: Page) {
+  // Catch-all for any unmocked API endpoints — registered first = lowest priority
+  await page.route('**/api/v1/**', (route) => {
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({}) });
+  });
+
+  // Specific routes — registered after catch-all = higher priority
   await page.route('**/api/v1/auth/me', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_USER) })
   );
@@ -36,11 +47,9 @@ export async function mockAllApiRoutes(page: Page) {
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_ANALYTICS_SUMMARY) })
   );
 
-  // Catch-all for any unmocked API endpoints
-  await page.route('**/api/v1/**', (route) => {
-    // Only intercept if not already handled
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({}) });
-  });
+  await page.route('**/api/v1/connections**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_CONNECTIONS) })
+  );
 }
 
 /**
