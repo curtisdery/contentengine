@@ -1,9 +1,8 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth-store';
-import { useToast } from '@/hooks/use-toast';
 import { ROUTES } from '@/lib/constants';
 import {
   Upload,
@@ -15,7 +14,6 @@ import {
   Zap,
   Crown,
   ChevronDown,
-  Mail,
   Twitter,
   MessageCircle,
 } from 'lucide-react';
@@ -43,22 +41,6 @@ const PLATFORMS = [
   { name: 'Discord', emoji: '💬' },
 ];
 
-const STORAGE_KEY = 'pandocast_waitlist';
-
-/* ─────────────────────── helper: save email ────────────────────── */
-
-function saveEmail(email: string): boolean {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    const list: string[] = raw ? JSON.parse(raw) : [];
-    if (list.includes(email)) return false;
-    list.push(email);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 /* ──────────────── helper: intersection observer hook ────────────── */
 
@@ -86,35 +68,6 @@ function useInView(threshold = 0.15) {
 }
 
 /* ──────────────────── helper: email form hook ──────────────────── */
-
-function useEmailForm() {
-  const [email, setEmail] = useState('');
-  const [submitted, setSubmitted] = useState(false);
-  const { success, error } = useToast();
-
-  const handleSubmit = useCallback(
-    (e: React.FormEvent) => {
-      e.preventDefault();
-      const trimmed = email.trim().toLowerCase();
-      if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
-        error('Invalid email', 'Please enter a valid email address.');
-        return;
-      }
-      const isNew = saveEmail(trimmed);
-      if (isNew) {
-        success('You\'re on the list!', 'We\'ll notify you when Pandocast launches.');
-      } else {
-        success('Already registered', 'This email is already on the waitlist.');
-      }
-      setSubmitted(true);
-      setEmail('');
-      setTimeout(() => setSubmitted(false), 4000);
-    },
-    [email, success, error]
-  );
-
-  return { email, setEmail, submitted, handleSubmit };
-}
 
 /* ═══════════════════════════════════════════════════════════════════
    MAIN PAGE COMPONENT
@@ -221,12 +174,12 @@ function Nav() {
           >
             Log in
           </a>
-          <button
-            onClick={() => document.getElementById('hero-email')?.focus()}
+          <a
+            href={ROUTES.SIGNUP}
             className="rounded-lg bg-cme-primary px-4 py-2 text-sm font-medium text-white shadow-[0_0_20px_rgba(108,92,231,0.25)] transition-all hover:bg-cme-primary-hover hover:shadow-[0_0_30px_rgba(108,92,231,0.4)] active:scale-[0.97]"
           >
-            Join Waitlist
-          </button>
+            Get Started
+          </a>
         </div>
       </div>
     </nav>
@@ -238,7 +191,6 @@ function Nav() {
    ═══════════════════════════════════════════════════════════════════ */
 
 function HeroSection() {
-  const { email, setEmail, submitted, handleSubmit } = useEmailForm();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -334,42 +286,20 @@ function HeroSection() {
           One upload becomes 18 platform-native posts — all in your voice, ready to publish.
         </p>
 
-        {/* Email CTA */}
-        <form
-          onSubmit={handleSubmit}
+        {/* CTA */}
+        <div
           className={`mb-6 flex w-full max-w-md flex-col items-center gap-3 sm:flex-row transition-all duration-700 delay-[400ms] ${
             mounted ? 'translate-y-0 opacity-100' : 'translate-y-6 opacity-0'
           }`}
         >
-          <div className="relative w-full flex-1">
-            <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-cme-text-muted" />
-            <input
-              id="hero-email"
-              type="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="h-12 w-full rounded-lg border border-cme-border bg-cme-surface pl-10 pr-4 text-sm text-cme-text placeholder:text-cme-text-muted transition-all duration-200 focus:border-cme-primary focus:outline-none focus:ring-2 focus:ring-cme-primary/50"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={submitted}
-            className="group flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-cme-primary px-6 text-sm font-semibold text-white shadow-[0_0_25px_rgba(108,92,231,0.3)] transition-all duration-200 hover:bg-cme-primary-hover hover:shadow-[0_0_40px_rgba(108,92,231,0.45)] active:scale-[0.97] disabled:opacity-70 sm:w-auto"
+          <a
+            href={ROUTES.SIGNUP}
+            className="group flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-cme-primary px-8 text-sm font-semibold text-white shadow-[0_0_25px_rgba(108,92,231,0.3)] transition-all duration-200 hover:bg-cme-primary-hover hover:shadow-[0_0_40px_rgba(108,92,231,0.45)] active:scale-[0.97] sm:w-auto"
           >
-            {submitted ? (
-              <>
-                <Check className="h-4 w-4" />
-                You&apos;re in!
-              </>
-            ) : (
-              <>
-                Join the Waitlist
-                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-              </>
-            )}
-          </button>
-        </form>
+            Get Started Free
+            <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+          </a>
+        </div>
 
         {/* Social proof */}
         <p
@@ -377,20 +307,7 @@ function HeroSection() {
             mounted ? 'translate-y-0 opacity-100' : 'translate-y-6 opacity-0'
           }`}
         >
-          <span className="flex -space-x-1.5">
-            {[
-              'bg-gradient-to-br from-purple-500 to-blue-500',
-              'bg-gradient-to-br from-cyan-500 to-emerald-500',
-              'bg-gradient-to-br from-violet-500 to-pink-500',
-              'bg-gradient-to-br from-amber-500 to-orange-500',
-            ].map((bg, i) => (
-              <span
-                key={i}
-                className={`inline-block h-6 w-6 rounded-full border-2 border-cme-bg ${bg}`}
-              />
-            ))}
-          </span>
-          Join <span className="font-semibold text-cme-text">2,400+</span> creators in early access
+          No credit card required. Free tier forever.
         </p>
       </div>
 
@@ -915,7 +832,7 @@ function PricingSection() {
         'Basic voice matching',
         '"Made with Pando" watermark',
       ],
-      cta: 'Start Free',
+      cta: 'Get Started Free',
       featured: false,
       icon: Zap,
     },
@@ -932,7 +849,7 @@ function PricingSection() {
         'No watermark',
         'Priority generation',
       ],
-      cta: 'Join Waitlist',
+      cta: 'Get Started',
       featured: true,
       icon: Sparkles,
     },
@@ -949,7 +866,7 @@ function PricingSection() {
         'Priority support',
         'API access',
       ],
-      cta: 'Join Waitlist',
+      cta: 'Get Started',
       featured: false,
       icon: Crown,
     },
@@ -1039,16 +956,16 @@ function PricingSection() {
                 </ul>
 
                 {/* CTA button */}
-                <button
-                  onClick={() => document.getElementById('final-cta-email')?.focus()}
-                  className={`w-full rounded-lg py-3 text-sm font-semibold transition-all duration-200 active:scale-[0.97] ${
+                <a
+                  href={ROUTES.SIGNUP}
+                  className={`block w-full rounded-lg py-3 text-center text-sm font-semibold transition-all duration-200 active:scale-[0.97] ${
                     plan.featured
                       ? 'bg-cme-primary text-white shadow-[0_0_25px_rgba(108,92,231,0.3)] hover:bg-cme-primary-hover hover:shadow-[0_0_35px_rgba(108,92,231,0.4)]'
                       : 'border border-cme-border bg-transparent text-cme-text hover:bg-cme-surface-hover hover:border-cme-border-bright'
                   }`}
                 >
                   {plan.cta}
-                </button>
+                </a>
               </div>
             );
           })}
@@ -1064,7 +981,6 @@ function PricingSection() {
 
 function FinalCTASection() {
   const { ref, isVisible } = useInView();
-  const { email, setEmail, submitted, handleSubmit } = useEmailForm();
 
   return (
     <section className="relative py-28 px-6" ref={ref}>
@@ -1098,40 +1014,16 @@ function FinalCTASection() {
               Stop creating for one platform. Start reaching everywhere.
             </p>
 
-            {/* Email form */}
-            <form
-              onSubmit={handleSubmit}
-              className="mx-auto mb-6 flex max-w-md flex-col items-center gap-3 sm:flex-row"
-            >
-              <div className="relative w-full flex-1">
-                <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-cme-text-muted" />
-                <input
-                  id="final-cta-email"
-                  type="email"
-                  placeholder="you@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="h-12 w-full rounded-lg border border-cme-border bg-cme-bg/80 pl-10 pr-4 text-sm text-cme-text placeholder:text-cme-text-muted transition-all duration-200 focus:border-cme-primary focus:outline-none focus:ring-2 focus:ring-cme-primary/50"
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={submitted}
-                className="group flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-cme-primary px-6 text-sm font-semibold text-white shadow-[0_0_25px_rgba(108,92,231,0.3)] transition-all duration-200 hover:bg-cme-primary-hover hover:shadow-[0_0_40px_rgba(108,92,231,0.45)] active:scale-[0.97] disabled:opacity-70 sm:w-auto"
+            {/* CTA */}
+            <div className="mx-auto mb-6 flex max-w-md justify-center">
+              <a
+                href={ROUTES.SIGNUP}
+                className="group flex h-12 items-center justify-center gap-2 rounded-lg bg-cme-primary px-8 text-sm font-semibold text-white shadow-[0_0_25px_rgba(108,92,231,0.3)] transition-all duration-200 hover:bg-cme-primary-hover hover:shadow-[0_0_40px_rgba(108,92,231,0.45)] active:scale-[0.97]"
               >
-                {submitted ? (
-                  <>
-                    <Check className="h-4 w-4" />
-                    You&apos;re in!
-                  </>
-                ) : (
-                  <>
-                    Get Early Access
-                    <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-                  </>
-                )}
-              </button>
-            </form>
+                Get Started Free
+                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+              </a>
+            </div>
 
             <p className="text-sm text-cme-text-muted">
               No credit card required. Free tier forever.

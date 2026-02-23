@@ -2,15 +2,13 @@
 importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js');
 
-// Firebase config is injected at runtime via the messaging SDK
-// The service worker only needs to handle background messages
 firebase.initializeApp({
-  apiKey: self.__FIREBASE_CONFIG__?.apiKey || '',
-  authDomain: self.__FIREBASE_CONFIG__?.authDomain || '',
-  projectId: self.__FIREBASE_CONFIG__?.projectId || '',
-  storageBucket: self.__FIREBASE_CONFIG__?.storageBucket || '',
-  messagingSenderId: self.__FIREBASE_CONFIG__?.messagingSenderId || '',
-  appId: self.__FIREBASE_CONFIG__?.appId || '',
+  apiKey: 'AIzaSyCiutH86MsgXcl_8BAc68mg7k8CK1cQlxI',
+  authDomain: 'pandocast-af179.firebaseapp.com',
+  projectId: 'pandocast-af179',
+  storageBucket: 'pandocast-af179.firebasestorage.app',
+  messagingSenderId: '158506638234',
+  appId: '1:158506638234:web:a0ddd9e41acf0456ff7823',
 });
 
 const messaging = firebase.messaging();
