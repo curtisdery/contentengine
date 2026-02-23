@@ -1,6 +1,5 @@
 import { test, expect } from '@playwright/test';
 import { setupAuthenticated } from '../fixtures/auth';
-import { MOCK_ANALYTICS_EMPTY } from '../helpers/mock-responses';
 
 test.describe('Upload Flow', () => {
   test.beforeEach(async ({ page }) => {
@@ -8,10 +7,18 @@ test.describe('Upload Flow', () => {
   });
 
   test('dashboard CTA card navigates to upload page on click', async ({ page }) => {
-    // Override analytics to return empty dashboard so the CTA card is visible
-    await page.route('**/api/v1/analytics**', (route) =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_ANALYTICS_EMPTY) })
-    );
+    // Override getOverview mock to return empty analytics so the CTA card is visible
+    await page.addInitScript(() => {
+      const fns = (window as any).__E2E_MOCK_FUNCTIONS__;
+      if (fns) {
+        fns.getOverview = () => ({
+          total_content_pieces: 0, total_outputs_generated: 0, total_published: 0,
+          total_reach: 0, total_engagements: 0, avg_multiplier_score: 0,
+          best_multiplier_score: 0, platforms_active: 0, top_performing_content: [], recent_performance: [],
+        });
+        fns.listConnections = () => ({ items: [], total: 0 });
+      }
+    });
 
     await page.goto('/dashboard');
     await expect(page.getByText(/welcome/i)).toBeVisible({ timeout: 10000 });
@@ -28,10 +35,18 @@ test.describe('Upload Flow', () => {
   });
 
   test('dashboard Get Started button navigates to upload page', async ({ page }) => {
-    // Override analytics to return empty dashboard so the CTA card is visible
-    await page.route('**/api/v1/analytics**', (route) =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_ANALYTICS_EMPTY) })
-    );
+    // Override getOverview mock to return empty analytics so the CTA card is visible
+    await page.addInitScript(() => {
+      const fns = (window as any).__E2E_MOCK_FUNCTIONS__;
+      if (fns) {
+        fns.getOverview = () => ({
+          total_content_pieces: 0, total_outputs_generated: 0, total_published: 0,
+          total_reach: 0, total_engagements: 0, avg_multiplier_score: 0,
+          best_multiplier_score: 0, platforms_active: 0, top_performing_content: [], recent_performance: [],
+        });
+        fns.listConnections = () => ({ items: [], total: 0 });
+      }
+    });
 
     await page.goto('/dashboard');
     await expect(page.getByText(/welcome/i)).toBeVisible({ timeout: 10000 });

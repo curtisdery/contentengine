@@ -55,6 +55,13 @@ export async function callFunction<TInput = Record<string, unknown>, TOutput = u
   functionName: string,
   data?: TInput,
 ): Promise<TOutput> {
+  // E2E test bypass — return mock data without hitting Firebase
+  if (typeof window !== 'undefined' && (window as any).__E2E_MOCK_FUNCTIONS__) {
+    const mockFn = (window as any).__E2E_MOCK_FUNCTIONS__[functionName];
+    if (mockFn) return mockFn(data) as TOutput;
+    return {} as TOutput;
+  }
+
   try {
     const functions = getCloudFunctions();
     const callable = httpsCallable<TInput, TOutput>(functions, functionName);

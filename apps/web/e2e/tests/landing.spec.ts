@@ -21,9 +21,9 @@ test.describe('Landing Page', () => {
     await expect(page.getByRole('link', { name: 'Log in' })).toBeVisible();
   });
 
-  test('has a Join Waitlist button in the nav', async ({ page }) => {
+  test('has a Get Started button in the nav', async ({ page }) => {
     await page.goto('/');
-    await expect(page.locator('nav').getByRole('button', { name: 'Join Waitlist' })).toBeVisible();
+    await expect(page.locator('nav').getByRole('link', { name: 'Get Started' })).toBeVisible();
   });
 
   test('displays the platform grid section', async ({ page }) => {

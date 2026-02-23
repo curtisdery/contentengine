@@ -41,9 +41,10 @@ export const MOCK_EMPTY_CONTENT_LIST = {
 };
 
 export const MOCK_AUTOPILOT_SUMMARY = {
-  enabled: false,
-  rules_count: 0,
-  next_scheduled: null,
+  autopilot_enabled: 0,
+  eligible_not_enabled: 0,
+  total_auto_published: 0,
+  platforms: [],
 };
 
 export const MOCK_ANALYTICS_SUMMARY = {

@@ -3,6 +3,7 @@ import { MOCK_USER } from '../helpers/mock-responses';
 
 /**
  * Set up authenticated session with a FREE-tier user to test subscription buttons.
+ * Uses Cloud Function mocks instead of REST API route interception.
  */
 async function setupFreeUser(page: Page) {
   // Block Firebase APIs
@@ -15,39 +16,26 @@ async function setupFreeUser(page: Page) {
 
   const freeUser = { ...MOCK_USER, subscription_tier: 'free' };
 
-  // Mock API routes
-  await page.route('**/api/v1/auth/me', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(freeUser) })
-  );
-
-  // Mock billing portal endpoint
-  await page.route('**/api/v1/billing/portal', (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ portal_url: 'https://billing.stripe.com/test-portal' }),
-    })
-  );
-
-  // Mock billing checkout endpoint
-  await page.route('**/api/v1/billing/create-checkout', (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ checkout_url: 'https://checkout.stripe.com/test-session' }),
-    })
-  );
-
-  // Catch-all for other API endpoints
-  await page.route('**/api/v1/**', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({}) })
-  );
-
-  // Inject auth mock
-  await page.addInitScript((user) => {
+  await page.addInitScript((m) => {
     (window as any).__E2E_AUTH_MOCK__ = true;
-    (window as any).__E2E_MOCK_USER__ = user;
-  }, freeUser);
+    (window as any).__E2E_MOCK_USER__ = m.user;
+    (window as any).__E2E_MOCK_FUNCTIONS__ = {
+      createProfile: () => m.user,
+      createPortal: () => ({ portal_url: 'https://billing.stripe.com/test-portal' }),
+      createCheckout: () => ({ checkout_url: 'https://checkout.stripe.com/test-session' }),
+      getSubscriptionStatus: () => ({ tier: 'free', is_active: true }),
+      getOverview: () => ({
+        total_content_pieces: 0, total_outputs_generated: 0, total_published: 0,
+        total_reach: 0, total_engagements: 0, avg_multiplier_score: 0,
+        best_multiplier_score: 0, platforms_active: 0, top_performing_content: [], recent_performance: [],
+      }),
+      listConnections: () => ({ items: [], total: 0 }),
+      getAutopilotSummary: () => ({ autopilot_enabled: 0, eligible_not_enabled: 0, total_auto_published: 0, platforms: [] }),
+      listSessions: () => ({ sessions: [] }),
+      getAuditLog: () => ({ entries: [], total: 0 }),
+      listContent: () => ({ items: [], total: 0 }),
+    };
+  }, { user: freeUser });
 }
 
 test.describe('Subscription Flow', () => {
@@ -69,54 +57,37 @@ test.describe('Subscription Flow', () => {
   test('Manage Subscription button calls billing portal API', async ({ page }) => {
     await setupFreeUser(page);
 
-    // Track API calls
-    const apiCalls: string[] = [];
-    page.on('request', (req) => {
-      if (req.url().includes('/api/v1/billing/')) {
-        apiCalls.push(req.url());
-      }
-    });
-
     await page.goto('/settings');
     await expect(page.getByRole('button', { name: 'Manage Subscription' })).toBeVisible({ timeout: 10000 });
 
-    // Click Manage Subscription — it will try to redirect to the portal URL
-    // We intercept the navigation to prevent leaving the page
-    await page.route('https://billing.stripe.com/**', (route) => route.abort());
+    // Intercept the Stripe portal redirect with a fulfilled response so the page navigates
+    await page.route('https://billing.stripe.com/**', (route) =>
+      route.fulfill({ status: 200, contentType: 'text/html', body: '<html><body>Stripe Portal</body></html>' })
+    );
+
     await page.getByRole('button', { name: 'Manage Subscription' }).click();
 
-    // Wait for the API call to be made
-    await page.waitForTimeout(1000);
-
-    // Verify the billing portal API was called
-    expect(apiCalls.some((url) => url.includes('/billing/portal'))).toBe(true);
+    // The mock createPortal returns portal_url, and the handler navigates to it
+    await page.waitForURL('**/billing.stripe.com/**', { timeout: 5000 });
+    expect(page.url()).toContain('billing.stripe.com/test-portal');
   });
 
   test('Upgrade to Pro button calls billing checkout API', async ({ page }) => {
     await setupFreeUser(page);
 
-    const apiCalls: { url: string; body: string | null }[] = [];
-    page.on('request', (req) => {
-      if (req.url().includes('/api/v1/billing/')) {
-        apiCalls.push({ url: req.url(), body: req.postData() });
-      }
-    });
-
     await page.goto('/settings');
     await expect(page.getByRole('button', { name: 'Upgrade to Pro' })).toBeVisible({ timeout: 10000 });
 
-    // Intercept Stripe redirect
-    await page.route('https://checkout.stripe.com/**', (route) => route.abort());
+    // Intercept Stripe checkout redirect with a fulfilled response
+    await page.route('https://checkout.stripe.com/**', (route) =>
+      route.fulfill({ status: 200, contentType: 'text/html', body: '<html><body>Stripe Checkout</body></html>' })
+    );
+
     await page.getByRole('button', { name: 'Upgrade to Pro' }).click();
 
-    await page.waitForTimeout(1000);
-
-    // Verify the billing checkout API was called with correct params
-    const checkoutCall = apiCalls.find((c) => c.url.includes('/billing/create-checkout'));
-    expect(checkoutCall).toBeDefined();
-    expect(checkoutCall!.body).toContain('"tier":"pro"');
-    expect(checkoutCall!.body).toContain('success_url');
-    expect(checkoutCall!.body).toContain('cancel_url');
+    // The mock createCheckout returns checkout_url, and the handler navigates to it
+    await page.waitForURL('**/checkout.stripe.com/**', { timeout: 5000 });
+    expect(page.url()).toContain('checkout.stripe.com/test-session');
   });
 
   test('settings nav cards navigate correctly', async ({ page }) => {

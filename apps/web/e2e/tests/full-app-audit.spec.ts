@@ -28,16 +28,74 @@ const MOCK_USER = {
 };
 
 /**
- * Set up instant auth (no async API call) while keeping real API routes.
+ * Set up instant auth with mock Cloud Functions.
  * The auth store sees __E2E_AUTH_MOCK__ and sets state synchronously.
- * api.ts still sends dev-token since Firebase is not configured.
+ * callFunction sees __E2E_MOCK_FUNCTIONS__ and returns mock data directly.
  */
 async function setupRealBackendAuth(page: Page) {
   await blockFirebase(page);
-  await page.addInitScript((user) => {
+
+  const MOCK_ANALYTICS = {
+    total_content_pieces: 0,
+    total_outputs_generated: 0,
+    total_published: 0,
+    total_reach: 0,
+    total_engagements: 0,
+    avg_multiplier_score: 0,
+    best_multiplier_score: 0,
+    platforms_active: 0,
+    top_performing_content: [],
+    recent_performance: [],
+  };
+
+  const MOCK_CONTENT_LIST = {
+    items: [],
+    total: 0,
+    page: 1,
+    per_page: 20,
+  };
+
+  await page.addInitScript((m) => {
     (window as any).__E2E_AUTH_MOCK__ = true;
-    (window as any).__E2E_MOCK_USER__ = user;
-  }, MOCK_USER);
+    (window as any).__E2E_MOCK_USER__ = m.user;
+    (window as any).__E2E_MOCK_FUNCTIONS__ = {
+      createProfile: () => m.user,
+      getOverview: () => m.analytics,
+      listConnections: () => ({ items: [], total: 0 }),
+      getAutopilotSummary: () => ({ autopilot_enabled: 0, eligible_not_enabled: 0, total_auto_published: 0, platforms: [] }),
+      listContent: () => m.contentList,
+      getContent: () => ({}),
+      createContent: () => ({}),
+      updateContent: () => ({}),
+      reanalyzeContent: () => ({ success: true }),
+      listOutputs: () => ({ items: [], total: 0 }),
+      triggerGeneration: () => ({ items: [], total: 0 }),
+      getCalendarEvents: () => ({ events: [], total: 0 }),
+      getCalendarStats: () => ({ upcoming_today: 0, upcoming_this_week: 0, total_published: 0, total_failed: 0, content_gaps: [] }),
+      getContentAnalytics: () => m.analytics,
+      getPlatformAnalytics: () => ({ platforms: [] }),
+      getHeatmap: () => ({ heatmap: [] }),
+      getAudienceIntelligence: () => ({}),
+      listVoiceProfiles: () => ({ items: [], total: 0 }),
+      createVoiceProfile: () => ({ id: 'mock-id' }),
+      deleteVoiceProfile: () => ({ success: true }),
+      analyzeSamples: () => ({ tone_metrics: {}, signature_phrases: [], suggested_attributes: [] }),
+      createPortal: () => ({ portal_url: 'https://example.com/portal' }),
+      createCheckout: () => ({ checkout_url: 'https://example.com/checkout' }),
+      getSubscriptionStatus: () => ({ tier: 'free', is_active: true }),
+      toggleAutopilot: () => ({ success: true }),
+      panicStop: () => ({ success: true }),
+      listSessions: () => ({ sessions: [] }),
+      getAuditLog: () => ({ entries: [], total: 0 }),
+      revokeSession: () => ({ success: true }),
+      revokeAllSessions: () => ({ success: true }),
+      registerFCMToken: () => ({ success: true }),
+      getOAuthURL: () => ({ authorize_url: 'https://example.com/oauth' }),
+      disconnectPlatform: () => ({ success: true }),
+      refreshConnection: () => ({ success: true }),
+      listMembers: () => ({ items: [], total: 0 }),
+    };
+  }, { user: MOCK_USER, analytics: MOCK_ANALYTICS, contentList: MOCK_CONTENT_LIST });
 }
 
 // ========== LANDING PAGE (must be unauthenticated) ==========
