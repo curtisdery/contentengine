@@ -232,7 +232,7 @@ export default function DashboardPage() {
       nextStep = {
         title: 'Generate platform-ready content',
         description: `You have ${contentCount} piece${contentCount === 1 ? '' : 's'} of content uploaded. Now let Pandocast transform it into 18 platform-native formats.`,
-        href: ROUTES.CONTENT,
+        href: ROUTES.CONTENT_UPLOAD,
         icon: <FileOutput className="h-10 w-10" />,
       };
     } else if (activeConnections === 0) {
