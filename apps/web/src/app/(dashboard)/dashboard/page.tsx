@@ -207,12 +207,50 @@ export default function DashboardPage() {
   }, []);
 
   const activeConnections = Array.isArray(connections) ? connections.filter((c) => c.is_active).length : 0;
-  const hasContent = dashboard ? dashboard.total_content_pieces > 0 : false;
 
   const multiplierDisplay =
     dashboard && dashboard.best_multiplier_score > 0
       ? `${dashboard.best_multiplier_score}x`
       : '\u2014';
+
+  // Determine the user's next step in the onboarding workflow
+  const contentCount = dashboard?.total_content_pieces ?? 0;
+  const outputsCount = dashboard?.total_outputs_generated ?? 0;
+  const publishedCount = dashboard?.total_published ?? 0;
+  const hasCompletedWorkflow = publishedCount > 0;
+
+  let nextStep: { title: string; description: string; href: string; icon: React.ReactNode } | null = null;
+  if (!hasCompletedWorkflow && !isLoading) {
+    if (contentCount === 0) {
+      nextStep = {
+        title: 'Upload your first piece of content',
+        description: 'Start multiplying your reach. Upload a blog post, video transcript, or any content and let Pandocast transform it for every platform.',
+        href: ROUTES.CONTENT_UPLOAD,
+        icon: <Upload className="h-10 w-10" />,
+      };
+    } else if (outputsCount === 0) {
+      nextStep = {
+        title: 'Generate platform-ready content',
+        description: `You have ${contentCount} piece${contentCount === 1 ? '' : 's'} of content uploaded. Now let Pandocast transform it into 18 platform-native formats.`,
+        href: ROUTES.CONTENT,
+        icon: <FileOutput className="h-10 w-10" />,
+      };
+    } else if (activeConnections === 0) {
+      nextStep = {
+        title: 'Connect your first platform',
+        description: `You have ${outputsCount} output${outputsCount === 1 ? '' : 's'} ready to publish. Connect Twitter, LinkedIn, or Bluesky to start publishing.`,
+        href: ROUTES.SETTINGS_CONNECTIONS,
+        icon: <Globe className="h-10 w-10" />,
+      };
+    } else {
+      nextStep = {
+        title: 'Schedule and publish your content',
+        description: `Everything is set up! Head to the calendar to schedule your content across ${activeConnections} connected platform${activeConnections === 1 ? '' : 's'}.`,
+        href: ROUTES.CALENDAR,
+        icon: <Sparkles className="h-10 w-10" />,
+      };
+    }
+  }
 
   const stats: StatCardProps[] = [
     {
@@ -278,36 +316,36 @@ export default function DashboardPage() {
       {/* Autopilot Status Widget */}
       <AutopilotWidget />
 
-      {/* Empty State / CTA — only show when user has no content */}
-      {!isLoading && !hasContent && (
+      {/* Next-Step CTA — guides user through the workflow until first publish */}
+      {nextStep && (
         <Card
           glow="primary"
           className="relative overflow-hidden cursor-pointer group"
-          onClick={() => router.push(ROUTES.CONTENT_UPLOAD)}
+          onClick={() => router.push(nextStep!.href)}
           role="link"
           tabIndex={0}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault();
-              router.push(ROUTES.CONTENT_UPLOAD);
+              router.push(nextStep!.href);
             }
           }}
         >
           <div className="absolute inset-0 bg-gradient-to-br from-cme-primary/5 via-transparent to-cme-secondary/5 pointer-events-none" />
           <CardContent className="relative flex flex-col items-center justify-center py-16 text-center">
-            <div className="mb-6 rounded-2xl bg-cme-primary/10 p-5 transition-transform duration-300 group-hover:scale-110">
-              <Sparkles className="h-10 w-10 text-cme-primary" />
+            <div className="mb-6 rounded-2xl bg-cme-primary/10 p-5 transition-transform duration-300 group-hover:scale-110 text-cme-primary">
+              {nextStep.icon}
             </div>
             <h2 className="mb-2 text-2xl font-semibold text-cme-text">
-              Upload your first piece of content
+              {nextStep.title}
             </h2>
             <p className="mb-8 max-w-md text-cme-text-muted">
-              Start multiplying your reach. Upload a blog post, video transcript,
-              or any content and let Pandocast transform it for every platform.
+              {nextStep.description}
             </p>
             <Button
               size="lg"
               className="gap-2"
+              onClick={() => router.push(nextStep!.href)}
             >
               Get Started
               <ArrowUpRight className="h-4 w-4" />
@@ -316,8 +354,8 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      {/* Recent Activity — show when user has content */}
-      {!isLoading && hasContent && dashboard && (
+      {/* Recent Activity — show only after user has published content */}
+      {!isLoading && hasCompletedWorkflow && dashboard && (
         <Card className="hover:border-cme-border-bright transition-all duration-300">
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-4">
