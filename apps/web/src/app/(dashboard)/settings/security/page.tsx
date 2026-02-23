@@ -32,7 +32,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
 import { PanicButton } from '@/components/autopilot/panic-button';
-import { apiClient, ApiClientError } from '@/lib/api';
+import { callFunction, ApiClientError } from '@/lib/cloud-functions';
 import { useToast } from '@/hooks/use-toast';
 import { ROUTES } from '@/lib/constants';
 import type { SessionResponse, AuditLogEntry } from '@/types/api';
@@ -346,10 +346,8 @@ export default function SecurityPage() {
   const fetchSessions = React.useCallback(async () => {
     setIsLoadingSessions(true);
     try {
-      const response = await apiClient.get<SessionResponse[]>(
-        '/api/v1/security/sessions'
-      );
-      setSessions(response);
+      const response = await callFunction<Record<string, unknown>, { sessions: SessionResponse[] }>('listSessions', {});
+      setSessions(response.sessions);
     } catch {
       setSessions([]);
     } finally {
@@ -364,15 +362,13 @@ export default function SecurityPage() {
       else setIsLoadingMoreAudit(true);
 
       try {
-        const response = await apiClient.get<AuditLogEntry[]>(
-          `/api/v1/security/audit-log?offset=${page * 20}&limit=20`
-        );
+        const response = await callFunction<Record<string, unknown>, { entries: AuditLogEntry[]; total: number }>('getAuditLog', {});
         if (append) {
-          setAuditLog((prev) => [...prev, ...response]);
+          setAuditLog((prev) => [...prev, ...response.entries]);
         } else {
-          setAuditLog(response);
+          setAuditLog(response.entries);
         }
-        setHasMoreAudit(response.length === 20);
+        setHasMoreAudit(response.entries.length === 20);
       } catch {
         if (!append) setAuditLog([]);
         setHasMoreAudit(false);
@@ -393,7 +389,7 @@ export default function SecurityPage() {
   const handleRevokeSession = async (sessionId: string) => {
     setRevokingSession(sessionId);
     try {
-      await apiClient.delete(`/api/v1/security/sessions/${sessionId}`);
+      await callFunction('revokeSession', { session_id: sessionId });
       showSuccess('Session Revoked', 'The session has been terminated.');
       await fetchSessions();
     } catch (err) {
@@ -411,7 +407,7 @@ export default function SecurityPage() {
   const handleRevokeAll = async () => {
     setIsRevokingAll(true);
     try {
-      await apiClient.delete('/api/v1/security/sessions');
+      await callFunction('revokeAllSessions', {});
       showSuccess(
         'All Sessions Revoked',
         'All other sessions have been terminated.'
@@ -438,7 +434,7 @@ export default function SecurityPage() {
   // Panic handler
   const handlePanic = async () => {
     try {
-      await apiClient.post('/api/v1/security/panic');
+      await callFunction('panicStop', {});
       showWarning(
         'Emergency Stop Executed',
         'All connections, sessions, and autopilot have been revoked.'

@@ -6,7 +6,7 @@ import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { VoiceWizard } from '@/components/voice/voice-wizard';
 import { useToast } from '@/hooks/use-toast';
-import { apiClient, ApiClientError } from '@/lib/api';
+import { callFunction, ApiClientError } from '@/lib/cloud-functions';
 import { ROUTES } from '@/lib/constants';
 import type { VoiceProfileCreateRequest, VoiceProfileResponse } from '@/types/api';
 
@@ -19,8 +19,8 @@ export default function VoiceSetupPage() {
     setIsSubmitting(true);
 
     try {
-      await apiClient.post<VoiceProfileResponse>(
-        '/api/v1/voice/profiles',
+      await callFunction<VoiceProfileCreateRequest, VoiceProfileResponse>(
+        'createVoiceProfile',
         data
       );
       success(

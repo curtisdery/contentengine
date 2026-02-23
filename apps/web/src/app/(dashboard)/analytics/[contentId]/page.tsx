@@ -18,7 +18,7 @@ import { Badge } from '@/components/ui/badge';
 import { StatCard } from '@/components/analytics/stat-card';
 import { PerformanceBars } from '@/components/analytics/performance-bars';
 import { cn, formatNumber, formatPercentage, formatDate } from '@/lib/utils';
-import { apiClient } from '@/lib/api';
+import { callFunction } from '@/lib/cloud-functions';
 import { getPlatformConfig } from '@/components/content/platform-badge';
 import type { MultiplierScoreResponse } from '@/types/api';
 
@@ -252,8 +252,9 @@ export default function ContentAnalyticsPage() {
 
     async function fetchData() {
       try {
-        const result = await apiClient.get<ContentAnalyticsDetail>(
-          `/api/v1/analytics/content/${contentId}`
+        const result = await callFunction<{ content_id: string }, ContentAnalyticsDetail>(
+          'getContentAnalytics',
+          { content_id: contentId }
         );
         if (!cancelled) {
           setData(result);

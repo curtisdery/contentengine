@@ -25,7 +25,7 @@ import { StatCard } from '@/components/analytics/stat-card';
 import { PerformanceBars } from '@/components/analytics/performance-bars';
 import { Heatmap } from '@/components/analytics/heatmap';
 import { cn, formatNumber, formatPercentage } from '@/lib/utils';
-import { apiClient } from '@/lib/api';
+import { useCallable } from '@/hooks/use-callable';
 import { getPlatformConfig } from '@/components/content/platform-badge';
 import type {
   AnalyticsDashboardResponse,
@@ -95,55 +95,6 @@ function SectionSkeleton() {
       </CardContent>
     </Card>
   );
-}
-
-// ---------------------------------------------------------------------------
-// Data-fetching hook
-// ---------------------------------------------------------------------------
-
-interface AsyncData<T> {
-  data: T | null;
-  isLoading: boolean;
-  error: string | null;
-}
-
-function useAsyncData<T>(path: string, delayMs: number = 0): AsyncData<T> {
-  const [state, setState] = React.useState<AsyncData<T>>({
-    data: null,
-    isLoading: true,
-    error: null,
-  });
-
-  React.useEffect(() => {
-    let cancelled = false;
-
-    const fetchData = async () => {
-      // Stagger requests slightly for progressive loading feel
-      if (delayMs > 0) {
-        await new Promise((r) => setTimeout(r, delayMs));
-      }
-
-      try {
-        const data = await apiClient.get<T>(path);
-        if (!cancelled) {
-          setState({ data, isLoading: false, error: null });
-        }
-      } catch (err: unknown) {
-        if (!cancelled) {
-          const message =
-            err instanceof Error ? err.message : 'Failed to load data';
-          setState({ data: null, isLoading: false, error: message });
-        }
-      }
-    };
-
-    fetchData();
-    return () => {
-      cancelled = true;
-    };
-  }, [path, delayMs]);
-
-  return state;
 }
 
 // ---------------------------------------------------------------------------
@@ -594,33 +545,48 @@ function StrategySuggestions({ data }: { data: ContentStrategySuggestion[] }) {
 
 export default function AnalyticsPage() {
   // Staggered data fetching for progressive loading
-  const dashboard = useAsyncData<AnalyticsDashboardResponse>(
-    '/api/v1/analytics/dashboard',
-    0
+  const dashboard = useCallable<{ days: number }, AnalyticsDashboardResponse>(
+    'getOverview',
+    { days: 30 },
+    { delayMs: 0 }
   );
-  const platformPerf = useAsyncData<PlatformPerformanceResponse[]>(
-    '/api/v1/analytics/platform-performance',
-    200
+  const platformPerfRaw = useCallable<{ days: number }, { platforms: PlatformPerformanceResponse[] }>(
+    'getPlatformAnalytics',
+    { days: 30 },
+    { delayMs: 200 }
   );
-  const contentTypes = useAsyncData<ContentTypePerformanceResponse[]>(
-    '/api/v1/analytics/content-types',
-    400
+  const platformPerf = {
+    ...platformPerfRaw,
+    data: platformPerfRaw.data?.platforms ?? null,
+  };
+  const contentTypes = useCallable<{ days: number }, ContentTypePerformanceResponse[]>(
+    'getContentAnalytics',
+    { days: 30 },
+    { delayMs: 400 }
   );
-  const hooks = useAsyncData<HookPerformanceResponse[]>(
-    '/api/v1/analytics/hook-performance',
-    600
+  const hooks = useCallable<{ days: number }, HookPerformanceResponse[]>(
+    'getContentAnalytics',
+    { days: 30 },
+    { delayMs: 600 }
   );
-  const heatmap = useAsyncData<TimeHeatmapEntry[]>(
-    '/api/v1/analytics/time-heatmap',
-    800
+  const heatmapRaw = useCallable<{ days: number }, { heatmap: TimeHeatmapEntry[] }>(
+    'getHeatmap',
+    { days: 30 },
+    { delayMs: 800 }
   );
-  const audience = useAsyncData<AudienceIntelligenceResponse>(
-    '/api/v1/analytics/audience-intelligence',
-    1000
+  const heatmap = {
+    ...heatmapRaw,
+    data: heatmapRaw.data?.heatmap ?? null,
+  };
+  const audience = useCallable<Record<string, unknown>, AudienceIntelligenceResponse>(
+    'getAudienceIntelligence',
+    {},
+    { delayMs: 1000 }
   );
-  const strategy = useAsyncData<ContentStrategySuggestion[]>(
-    '/api/v1/analytics/strategy-suggestions',
-    1200
+  const strategy = useCallable<Record<string, unknown>, ContentStrategySuggestion[]>(
+    'getAudienceIntelligence',
+    {},
+    { delayMs: 1200 }
   );
 
   // Determine if there is no data at all (empty state)
@@ -750,7 +716,7 @@ export default function AnalyticsPage() {
         title="Platform Performance"
         icon={<Globe className="h-5 w-5" />}
         isLoading={platformPerf.isLoading}
-        error={platformPerf.error}
+        error={platformPerf.error?.message ?? null}
         delay={200}
       >
         <Card>
@@ -768,7 +734,7 @@ export default function AnalyticsPage() {
         title="Content Type Performance"
         icon={<FileText className="h-5 w-5" />}
         isLoading={contentTypes.isLoading}
-        error={contentTypes.error}
+        error={contentTypes.error?.message ?? null}
         delay={400}
       >
         <ContentTypeCards data={contentTypes.data ?? []} />
@@ -779,7 +745,7 @@ export default function AnalyticsPage() {
         title="Hook Performance"
         icon={<Zap className="h-5 w-5" />}
         isLoading={hooks.isLoading}
-        error={hooks.error}
+        error={hooks.error?.message ?? null}
         delay={600}
       >
         <Card>
@@ -794,7 +760,7 @@ export default function AnalyticsPage() {
         title="Best Times to Post"
         icon={<Clock className="h-5 w-5" />}
         isLoading={heatmap.isLoading}
-        error={heatmap.error}
+        error={heatmap.error?.message ?? null}
         delay={800}
       >
         <Card>
@@ -809,7 +775,7 @@ export default function AnalyticsPage() {
         title="Audience Intelligence"
         icon={<TrendingUp className="h-5 w-5" />}
         isLoading={audience.isLoading}
-        error={audience.error}
+        error={audience.error?.message ?? null}
         delay={1000}
       >
         {audience.data ? (
@@ -826,7 +792,7 @@ export default function AnalyticsPage() {
         title="Content Strategy Suggestions"
         icon={<Lightbulb className="h-5 w-5" />}
         isLoading={strategy.isLoading}
-        error={strategy.error}
+        error={strategy.error?.message ?? null}
         delay={1200}
       >
         <StrategySuggestions data={strategy.data ?? []} />

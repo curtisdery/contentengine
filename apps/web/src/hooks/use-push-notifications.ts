@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { getFirebaseMessaging } from '@/lib/firebase';
-import { apiClient } from '@/lib/api';
+import { callFunction } from '@/lib/cloud-functions';
 import { useAuthStore } from '@/stores/auth-store';
 
 export function usePushNotifications() {
@@ -34,7 +34,7 @@ export function usePushNotifications() {
       const token = await getToken(messaging, { vapidKey });
 
       if (token) {
-        await apiClient.post('/api/v1/auth/fcm-token', { fcm_token: token });
+        await callFunction('registerFCMToken', { token });
         return true;
       }
 

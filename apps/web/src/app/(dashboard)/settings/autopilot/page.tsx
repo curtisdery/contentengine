@@ -30,7 +30,7 @@ import { PlatformBadge, getPlatformConfig } from '@/components/content/platform-
 import { TrustGauge } from '@/components/autopilot/trust-gauge';
 import { EligibilityBanner } from '@/components/autopilot/eligibility-banner';
 import { PanicButton } from '@/components/autopilot/panic-button';
-import { apiClient, ApiClientError } from '@/lib/api';
+import { callFunction, ApiClientError } from '@/lib/cloud-functions';
 import { useToast } from '@/hooks/use-toast';
 import { ROUTES } from '@/lib/constants';
 import type { AutopilotSummaryResponse } from '@/types/api';
@@ -349,9 +349,7 @@ export default function AutopilotPage() {
   // Fetch autopilot summary
   const fetchSummary = React.useCallback(async () => {
     try {
-      const response = await apiClient.get<AutopilotSummaryResponse>(
-        '/api/v1/autopilot/summary'
-      );
+      const response = await callFunction<Record<string, unknown>, AutopilotSummaryResponse>('getAutopilotSummary', {});
       setSummary(response);
     } catch {
       // API might not exist yet, use empty state
@@ -376,7 +374,7 @@ export default function AutopilotPage() {
   const handleEnable = async (platformId: string) => {
     setActioningPlatform(platformId);
     try {
-      await apiClient.post('/api/v1/autopilot/enable', { platform_id: platformId });
+      await callFunction('toggleAutopilot', { platform_id: platformId, enabled: true });
       showSuccess(
         'Autopilot Enabled',
         `${getPlatformConfig(platformId).name} is now on autopilot.`
@@ -398,7 +396,7 @@ export default function AutopilotPage() {
   const handleDisable = async (platformId: string) => {
     setActioningPlatform(platformId);
     try {
-      await apiClient.post(`/api/v1/autopilot/disable/${platformId}`);
+      await callFunction('toggleAutopilot', { platform_id: platformId, enabled: false });
       showSuccess(
         'Autopilot Disabled',
         `${getPlatformConfig(platformId).name} autopilot has been turned off.`
@@ -418,7 +416,7 @@ export default function AutopilotPage() {
   // Emergency stop handler
   const handlePanic = async () => {
     try {
-      await apiClient.post('/api/v1/security/panic');
+      await callFunction('panicStop', {});
       showWarning(
         'Emergency Stop Executed',
         'All autopilot, connections, and sessions have been revoked.'

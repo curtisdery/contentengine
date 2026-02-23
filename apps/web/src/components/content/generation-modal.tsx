@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PlatformSelector } from '@/components/content/platform-selector';
 import { getPlatformConfig } from '@/components/content/platform-badge';
-import { apiClient, ApiClientError } from '@/lib/api';
+import { callFunction, ApiClientError } from '@/lib/cloud-functions';
+import { getAllPlatforms } from '@/lib/platform-profiles';
 import { trackEvent } from '@/lib/analytics';
 import { useToast } from '@/hooks/use-toast';
 import type {
@@ -48,18 +49,27 @@ function GenerationModal({ contentId, isOpen, onClose, onSuccess }: GenerationMo
     const loadData = async () => {
       setIsLoadingData(true);
       try {
-        const [profilesRes, platformsRes] = await Promise.all([
-          apiClient.get<VoiceProfileResponse[]>('/api/v1/voice/profiles').catch(() => [] as VoiceProfileResponse[]),
-          apiClient.get<PlatformProfileResponse[]>('/api/v1/platforms').catch(() => [] as PlatformProfileResponse[]),
-        ]);
-        setVoiceProfiles(profilesRes);
+        const voiceRes = await callFunction<Record<string, unknown>, { items: VoiceProfileResponse[]; total: number }>(
+          'listVoiceProfiles', {}
+        ).catch(() => ({ items: [] as VoiceProfileResponse[], total: 0 }));
+        const platformProfiles = getAllPlatforms();
+        const platformsRes: PlatformProfileResponse[] = platformProfiles.map((p) => ({
+          platform_id: p.platformId,
+          name: p.name,
+          tier: p.tier,
+          native_tone: '',
+          media_format: p.mediaFormat,
+          posting_cadence: '',
+          length_range: { min: 0, ideal: 0, max: 0 },
+        }));
+        setVoiceProfiles(voiceRes.items);
         setPlatforms(platformsRes);
 
         // Select all platforms by default
         setSelectedPlatforms(platformsRes.map((p) => p.platform_id));
 
         // Select default voice profile if available
-        const defaultProfile = profilesRes.find((p) => p.is_default);
+        const defaultProfile = voiceRes.items.find((p) => p.is_default);
         if (defaultProfile) {
           setSelectedVoiceId(defaultProfile.id);
         }
@@ -113,9 +123,8 @@ function GenerationModal({ contentId, isOpen, onClose, onSuccess }: GenerationMo
         request.emphasis_notes = emphasisNotes.trim();
       }
 
-      await apiClient.post<GeneratedOutputListResponse>(
-        `/api/v1/generation/${contentId}/generate`,
-        request
+      await callFunction<GenerateRequest & { content_id: string }, GeneratedOutputListResponse>(
+        'triggerGeneration', { content_id: contentId, ...request }
       );
 
       setStep('complete');

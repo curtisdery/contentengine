@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { getPlatformConfig } from '@/components/content/platform-badge';
-import { apiClient, ApiClientError } from '@/lib/api';
+import { callFunction, ApiClientError } from '@/lib/cloud-functions';
 import { useToast } from '@/hooks/use-toast';
 import type {
   ContentUploadResponse,
@@ -48,9 +48,7 @@ function AutoScheduleModal({ isOpen, onClose, onSuccess }: AutoScheduleModalProp
     const loadContent = async () => {
       setIsLoadingContent(true);
       try {
-        const response = await apiClient.get<ContentListResponse>(
-          '/api/v1/content?status=completed&limit=50'
-        );
+        const response = await callFunction<Record<string, unknown>, ContentListResponse>('listContent', {});
         setContentList(response.items);
       } catch {
         showError('Failed to load content', 'Could not fetch your content pieces.');
@@ -94,13 +92,10 @@ function AutoScheduleModal({ isOpen, onClose, onSuccess }: AutoScheduleModalProp
 
     try {
       // Call the auto-schedule endpoint in preview/dry-run mode
-      const response = await apiClient.post<CalendarEventsResponse>(
-        '/api/v1/calendar/auto-schedule',
-        {
+      const response = await callFunction<{ content_id: string; start_date: string }, CalendarEventsResponse>('autoSchedule', {
           content_id: selectedContentId,
           start_date: new Date(startDate).toISOString(),
-        }
-      );
+        });
       setPreviewEvents(response.events);
     } catch (err) {
       if (err instanceof ApiClientError) {
@@ -117,13 +112,10 @@ function AutoScheduleModal({ isOpen, onClose, onSuccess }: AutoScheduleModalProp
     setIsScheduling(true);
 
     try {
-      await apiClient.post<CalendarEventsResponse>(
-        '/api/v1/calendar/auto-schedule',
-        {
+      await callFunction('autoSchedule', {
           content_id: selectedContentId,
           start_date: new Date(startDate).toISOString(),
-        }
-      );
+        });
 
       setStep('complete');
       showSuccess(

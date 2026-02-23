@@ -10,7 +10,8 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { OutputCard } from '@/components/content/output-card';
 import { useToast } from '@/hooks/use-toast';
-import { apiClient, ApiClientError } from '@/lib/api';
+import { callFunction, ApiClientError } from '@/lib/cloud-functions';
+import { getAllPlatforms, getPlatformName } from '@/lib/platform-profiles';
 import { ROUTES } from '@/lib/constants';
 import type {
   GeneratedOutputListResponse,
@@ -89,10 +90,19 @@ export default function OutputsPage() {
   // Fetch data
   const fetchOutputs = React.useCallback(async () => {
     try {
-      const [outputRes, platformRes] = await Promise.all([
-        apiClient.get<GeneratedOutputListResponse>(`/api/v1/generation/${contentId}/outputs`),
-        apiClient.get<PlatformProfileResponse[]>('/api/v1/platforms').catch(() => [] as PlatformProfileResponse[]),
-      ]);
+      const outputRes = await callFunction<{ content_id: string }, GeneratedOutputListResponse>(
+        'listOutputs', { content_id: contentId }
+      );
+      const platformProfiles = getAllPlatforms();
+      const platformRes: PlatformProfileResponse[] = platformProfiles.map((p) => ({
+        platform_id: p.platformId,
+        name: p.name,
+        tier: p.tier,
+        native_tone: '',
+        media_format: p.mediaFormat,
+        posting_cadence: '',
+        length_range: { min: 0, ideal: 0, max: 0 },
+      }));
       setOutputData(outputRes);
       setPlatforms(platformRes);
       setError(null);
@@ -167,9 +177,8 @@ export default function OutputsPage() {
   const handleApprove = async (outputId: string) => {
     setApprovingIds((prev) => new Set(prev).add(outputId));
     try {
-      const updated = await apiClient.patch<GeneratedOutputResponse>(
-        `/api/v1/generation/outputs/${outputId}`,
-        { status: 'approved' } as OutputUpdateRequest
+      const updated = await callFunction<{ output_id: string }, GeneratedOutputResponse>(
+        'approveOutput', { output_id: outputId }
       );
       setOutputData((prev) => {
         if (!prev) return prev;
@@ -200,9 +209,8 @@ export default function OutputsPage() {
   const handleEdit = async (outputId: string, content: string) => {
     setSavingIds((prev) => new Set(prev).add(outputId));
     try {
-      const updated = await apiClient.patch<GeneratedOutputResponse>(
-        `/api/v1/generation/outputs/${outputId}`,
-        { content } as OutputUpdateRequest
+      const updated = await callFunction<{ output_id: string; content: string }, GeneratedOutputResponse>(
+        'editOutput', { output_id: outputId, content }
       );
       setOutputData((prev) => {
         if (!prev) return prev;
@@ -234,9 +242,8 @@ export default function OutputsPage() {
     if (ids.length === 0) return;
     setIsBulkApproving(true);
     try {
-      await apiClient.post<{ approved_count: number }>(
-        `/api/v1/generation/${contentId}/outputs/bulk-approve`,
-        { output_ids: ids } as BulkApproveRequest
+      await callFunction<{ output_ids: string[] }, { approved_count: number }>(
+        'bulkApproveOutputs', { output_ids: ids }
       );
       // Update local state
       setOutputData((prev) => {

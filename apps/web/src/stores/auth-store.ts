@@ -12,7 +12,7 @@ import {
   updateProfile,
 } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
-import { apiClient } from '@/lib/api';
+import { callFunction, ApiClientError } from '@/lib/cloud-functions';
 import { trackEvent } from '@/lib/analytics';
 import type { User } from '@/types/user';
 
@@ -82,12 +82,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       await updateProfile(credential.user, { displayName: fullName });
 
       // Sync with backend
-      const idToken = await credential.user.getIdToken();
-      await apiClient.post(
-        '/api/v1/auth/signup',
-        { firebase_token: idToken, full_name: fullName },
-        true
-      );
+      await callFunction('createProfile', { full_name: fullName });
       trackEvent('sign_up', { method: 'email' });
       // The onIdTokenChanged listener will handle setting user state
     } catch (error: unknown) {
@@ -109,13 +104,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const credential = await signInWithPopup(auth, googleProvider);
 
       // Sync with backend
-      const idToken = await credential.user.getIdToken();
       const displayName = credential.user.displayName || credential.user.email?.split('@')[0] || 'User';
-      await apiClient.post(
-        '/api/v1/auth/signup',
-        { firebase_token: idToken, full_name: displayName },
-        true
-      );
+      await callFunction('createProfile', { full_name: displayName });
       trackEvent('sign_up', { method: 'google' });
       // The onIdTokenChanged listener will handle setting user state
     } catch (error: unknown) {
@@ -133,12 +123,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (typeof window !== 'undefined' && (window as any).__E2E_AUTH_MOCK__) {
       set({ user: null, isAuthenticated: false, isLoading: false });
       return;
-    }
-
-    try {
-      await apiClient.post('/api/v1/auth/logout');
-    } catch {
-      // Proceed with logout even if API call fails
     }
 
     await signOut(auth);
@@ -177,7 +161,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (process.env.NODE_ENV === 'development' && !process.env.NEXT_PUBLIC_FIREBASE_API_KEY) {
       (async () => {
         try {
-          const user = await apiClient.get<User>('/api/v1/auth/me');
+          const user = await callFunction<Record<string, unknown>, User>('createProfile', {});
           set({ user, isAuthenticated: true, isLoading: false });
         } catch {
           set({ user: null, isAuthenticated: false, isLoading: false });
@@ -189,7 +173,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const unsubscribe = onIdTokenChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         try {
-          const user = await apiClient.get<User>('/api/v1/auth/me');
+          const user = await callFunction<Record<string, unknown>, User>('createProfile', {});
           set({
             user,
             isAuthenticated: true,

@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { apiClient } from '@/lib/api';
+import { callFunction, ApiClientError } from '@/lib/cloud-functions';
 
 interface OAuthAuthorizeResponse {
   authorize_url: string;
@@ -21,9 +21,7 @@ export function useOAuthPopup() {
 
       return new Promise<OAuthResult>(async (resolve, reject) => {
         try {
-          const { authorize_url } = await apiClient.get<OAuthAuthorizeResponse>(
-            `/api/v1/connections/${platformId}/authorize`
-          );
+          const { authorize_url } = await callFunction<{ platform_id: string }, OAuthAuthorizeResponse>('getOAuthURL', { platform_id: platformId });
 
           // Open centered popup
           const width = 600;

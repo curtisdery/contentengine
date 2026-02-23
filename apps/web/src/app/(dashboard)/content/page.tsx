@@ -9,7 +9,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { StatusBadge } from '@/components/content/status-badge';
-import { apiClient, ApiClientError } from '@/lib/api';
+import { callFunction, ApiClientError } from '@/lib/cloud-functions';
 import { ROUTES } from '@/lib/constants';
 import { formatDate } from '@/lib/utils';
 import type { ContentListResponse, ContentUploadResponse } from '@/types/api';
@@ -113,8 +113,8 @@ export default function ContentListPage() {
   React.useEffect(() => {
     async function fetchContent() {
       try {
-        const response = await apiClient.get<ContentListResponse>(
-          '/api/v1/content'
+        const response = await callFunction<Record<string, unknown>, ContentListResponse>(
+          'listContent', {}
         );
         setItems(response.items);
       } catch (err) {
@@ -158,8 +158,7 @@ export default function ContentListPage() {
             onClick={() => {
               setError(null);
               setIsLoading(true);
-              apiClient
-                .get<ContentListResponse>('/api/v1/content')
+              callFunction<Record<string, unknown>, ContentListResponse>('listContent', {})
                 .then((res) => setItems(res.items))
                 .catch(() => setError('Failed to load content.'))
                 .finally(() => setIsLoading(false));

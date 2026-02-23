@@ -9,7 +9,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ToneMeter } from '@/components/voice/tone-meter';
 import { AttributePicker } from '@/components/voice/attribute-picker';
-import { apiClient } from '@/lib/api';
+import { callFunction } from '@/lib/cloud-functions';
 import type { VoiceProfileCreateRequest, VoiceSampleAnalysis } from '@/types/api';
 
 interface VoiceWizardProps {
@@ -121,8 +121,8 @@ function VoiceWizard({ onComplete }: VoiceWizardProps) {
     setErrors({});
 
     try {
-      const analysis = await apiClient.post<VoiceSampleAnalysis>(
-        '/api/v1/voice/analyze',
+      const analysis = await callFunction<{ samples: string[] }, VoiceSampleAnalysis>(
+        'analyzeSamples',
         { samples: nonEmptySamples }
       );
       updateState({ analysis });

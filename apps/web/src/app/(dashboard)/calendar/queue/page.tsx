@@ -26,7 +26,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
 import { PlatformBadge, getPlatformConfig, platformMap } from '@/components/content/platform-badge';
-import { apiClient, ApiClientError } from '@/lib/api';
+import { callFunction, ApiClientError } from '@/lib/cloud-functions';
 import { useToast } from '@/hooks/use-toast';
 import { ROUTES } from '@/lib/constants';
 import type {
@@ -290,9 +290,7 @@ export default function QueuePage() {
       const endDate = new Date();
       endDate.setDate(endDate.getDate() + 30);
 
-      const response = await apiClient.get<CalendarEventsResponse>(
-        `/api/v1/calendar/events?start=${encodeURIComponent(startDate.toISOString())}&end=${encodeURIComponent(endDate.toISOString())}&limit=100`
-      );
+      const response = await callFunction<{ start: string; end: string }, CalendarEventsResponse>('getCalendarEvents', { start: startDate.toISOString(), end: endDate.toISOString() });
       setEvents(response.events);
     } catch {
       showError('Failed to load queue', 'Could not fetch scheduled events.');
@@ -359,7 +357,7 @@ export default function QueuePage() {
 
     try {
       const promises = Array.from(selectedIds).map((id) =>
-        apiClient.post(`/api/v1/calendar/events/${id}/publish-now`).catch(() => null)
+        callFunction('publishNow', { event_id: id }).catch(() => null)
       );
       await Promise.all(promises);
       showSuccess('Bulk publish initiated', `${selectedIds.size} events are being published.`);
@@ -375,7 +373,7 @@ export default function QueuePage() {
   // Individual actions
   const handlePublish = async (id: string) => {
     try {
-      await apiClient.post(`/api/v1/calendar/events/${id}/publish-now`);
+      await callFunction('publishNow', { event_id: id });
       showSuccess('Publishing started', 'Your content is being published.');
       await fetchEvents();
     } catch (err) {
@@ -389,7 +387,7 @@ export default function QueuePage() {
 
   const handleCancel = async (id: string) => {
     try {
-      await apiClient.delete(`/api/v1/calendar/events/${id}`);
+      await callFunction('cancelEvent', { event_id: id });
       showSuccess('Event cancelled', 'The scheduled event has been cancelled.');
       await fetchEvents();
     } catch (err) {
@@ -403,7 +401,7 @@ export default function QueuePage() {
 
   const handleRetry = async (id: string) => {
     try {
-      await apiClient.post(`/api/v1/calendar/events/${id}/publish-now`);
+      await callFunction('publishNow', { event_id: id });
       showSuccess('Retry initiated', 'Retrying publication...');
       await fetchEvents();
     } catch (err) {
@@ -417,7 +415,7 @@ export default function QueuePage() {
 
   const handleEditContent = async (id: string, content: string) => {
     try {
-      await apiClient.patch(`/api/v1/calendar/events/${id}`, { output_content: content });
+      await callFunction('editOutput', { output_id: id, content });
       showSuccess('Content updated', 'The event content has been saved.');
       await fetchEvents();
     } catch (err) {

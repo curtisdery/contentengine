@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ToneMeter } from '@/components/voice/tone-meter';
 import { useToast } from '@/hooks/use-toast';
-import { apiClient, ApiClientError } from '@/lib/api';
+import { callFunction, ApiClientError } from '@/lib/cloud-functions';
 import { ROUTES } from '@/lib/constants';
 import { formatDate } from '@/lib/utils';
 import type { VoiceProfileResponse } from '@/types/api';
@@ -116,10 +116,11 @@ export default function VoiceProfilesPage() {
 
   const fetchProfiles = React.useCallback(async () => {
     try {
-      const response = await apiClient.get<VoiceProfileResponse[]>(
-        '/api/v1/voice/profiles'
+      const response = await callFunction<Record<string, unknown>, { items: VoiceProfileResponse[]; total: number }>(
+        'listVoiceProfiles',
+        {}
       );
-      setProfiles(response);
+      setProfiles(response.items);
       setError(null);
     } catch (err) {
       if (err instanceof ApiClientError) {
@@ -141,7 +142,7 @@ export default function VoiceProfilesPage() {
 
     setIsDeleting(true);
     try {
-      await apiClient.delete(`/api/v1/voice/profiles/${deleteTarget.id}`);
+      await callFunction('deleteVoiceProfile', { profile_id: deleteTarget.id });
       setProfiles((prev) => prev.filter((p) => p.id !== deleteTarget.id));
       success(
         'Profile deleted',

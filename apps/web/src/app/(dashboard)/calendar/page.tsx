@@ -23,14 +23,13 @@ import { EventCard } from '@/components/calendar/event-card';
 import { EventDetailPanel } from '@/components/calendar/event-detail-panel';
 import { ContentGapAlert } from '@/components/calendar/content-gap-alert';
 import { AutoScheduleModal } from '@/components/calendar/auto-schedule-modal';
-import { apiClient, ApiClientError } from '@/lib/api';
+import { callFunction, ApiClientError } from '@/lib/cloud-functions';
 import { useToast } from '@/hooks/use-toast';
 import { ROUTES } from '@/lib/constants';
 import type {
   ScheduledEventResponse,
   CalendarEventsResponse,
   CalendarStatsResponse,
-  RescheduleRequest,
 } from '@/types/api';
 
 // ---------------------------------------------------------------------------
@@ -185,13 +184,9 @@ export default function CalendarPage() {
     setIsLoading(true);
     try {
       const [eventsRes, statsRes] = await Promise.all([
-        apiClient
-          .get<CalendarEventsResponse>(
-            `/api/v1/calendar/events?start=${encodeURIComponent(fetchRange.start)}&end=${encodeURIComponent(fetchRange.end)}`
-          )
+        callFunction<{ start: string; end: string }, CalendarEventsResponse>('getCalendarEvents', { start: fetchRange.start, end: fetchRange.end })
           .catch(() => ({ events: [], total: 0 }) as CalendarEventsResponse),
-        apiClient
-          .get<CalendarStatsResponse>('/api/v1/calendar/stats')
+        callFunction<Record<string, unknown>, CalendarStatsResponse>('getCalendarStats', {})
           .catch(() => null),
       ]);
       setEvents(eventsRes.events);
@@ -235,11 +230,7 @@ export default function CalendarPage() {
 
   const handleReschedule = async (eventId: string, newDatetime: string) => {
     try {
-      const body: RescheduleRequest = { scheduled_at: newDatetime };
-      await apiClient.patch<ScheduledEventResponse>(
-        `/api/v1/calendar/events/${eventId}/reschedule`,
-        body
-      );
+      await callFunction('rescheduleOutput', { event_id: eventId, scheduled_at: newDatetime });
       const updatedEvent = events.find((e) => e.id === eventId);
       const platformName = updatedEvent
         ? getPlatformConfig(updatedEvent.platform_id).name
@@ -264,9 +255,7 @@ export default function CalendarPage() {
 
   const handleCancel = async (eventId: string) => {
     try {
-      await apiClient.delete(
-        `/api/v1/calendar/events/${eventId}`
-      );
+      await callFunction('cancelEvent', { event_id: eventId });
       showSuccess('Event cancelled', 'The scheduled event has been cancelled.');
       await fetchData();
       setSelectedEvent(null);
@@ -281,9 +270,7 @@ export default function CalendarPage() {
 
   const handlePublishNow = async (eventId: string) => {
     try {
-      await apiClient.post<ScheduledEventResponse>(
-        `/api/v1/calendar/events/${eventId}/publish-now`
-      );
+      await callFunction('publishNow', { event_id: eventId });
       showSuccess('Publishing started', 'Your content is being published now.');
       const { trackEvent } = await import('@/lib/analytics');
       trackEvent('content_published');
@@ -300,9 +287,7 @@ export default function CalendarPage() {
 
   const handleRetry = async (eventId: string) => {
     try {
-      await apiClient.post<ScheduledEventResponse>(
-        `/api/v1/calendar/events/${eventId}/publish-now`
-      );
+      await callFunction('publishNow', { event_id: eventId });
       showSuccess('Retry initiated', 'Retrying publication...');
       await fetchData();
       setSelectedEvent(null);

@@ -9,7 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { UploadTabs } from '@/components/content/upload-tabs';
 import { FileUpload } from '@/components/content/file-upload';
 import { useToast } from '@/hooks/use-toast';
-import { apiClient, ApiClientError } from '@/lib/api';
+import { callFunction, ApiClientError } from '@/lib/cloud-functions';
 import { ROUTES } from '@/lib/constants';
 import { trackEvent } from '@/lib/analytics';
 import { cn } from '@/lib/utils';
@@ -31,19 +31,10 @@ export default function ContentUploadPage() {
     setAnalysisStatus('Uploading your content...');
 
     try {
-      // Step 1: Upload the content
-      const uploadResponse = await apiClient.post<ContentUploadResponse>(
-        '/api/v1/content/upload',
-        data
+      // Upload and auto-analyze the content
+      const uploadResponse = await callFunction<typeof data, ContentUploadResponse>(
+        'createContent', data
       );
-
-      // Step 2: Trigger analysis (only if raw_content was provided)
-      if (data.raw_content) {
-        setAnalysisStatus('Analyzing your content...');
-        await apiClient.post<ContentUploadResponse>(
-          `/api/v1/content/${uploadResponse.id}/analyze`
-        );
-      }
 
       trackEvent('content_upload', { content_type: data.content_type });
 

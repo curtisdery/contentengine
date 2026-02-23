@@ -12,7 +12,7 @@ import { StatusBadge } from '@/components/content/status-badge';
 import { DNACard, DNACardSkeleton } from '@/components/content/dna-card';
 import { GenerationModal } from '@/components/content/generation-modal';
 import { useToast } from '@/hooks/use-toast';
-import { apiClient, ApiClientError } from '@/lib/api';
+import { callFunction, ApiClientError } from '@/lib/cloud-functions';
 import { ROUTES } from '@/lib/constants';
 import type { ContentUploadResponse, ContentUpdateRequest } from '@/types/api';
 
@@ -42,8 +42,8 @@ export default function ContentDetailPage() {
 
   const fetchContent = React.useCallback(async () => {
     try {
-      const response = await apiClient.get<ContentUploadResponse>(
-        `/api/v1/content/${id}`
+      const response = await callFunction<{ content_id: string }, ContentUploadResponse>(
+        'getContent', { content_id: id }
       );
       setContent(response);
       setError(null);
@@ -72,8 +72,8 @@ export default function ContentDetailPage() {
 
     const interval = setInterval(async () => {
       try {
-        const response = await apiClient.get<ContentUploadResponse>(
-          `/api/v1/content/${id}`
+        const response = await callFunction<{ content_id: string }, ContentUploadResponse>(
+          'getContent', { content_id: id }
         );
         setContent(response);
         if (response.status !== 'analyzing') {
@@ -90,13 +90,11 @@ export default function ContentDetailPage() {
   const handleReanalyze = async () => {
     setIsReanalyzing(true);
     try {
-      await apiClient.post<ContentUploadResponse>(
-        `/api/v1/content/${id}/analyze`
-      );
+      await callFunction('reanalyzeContent', { content_id: id });
       success('Re-analysis started', 'Your content is being re-analyzed.');
       // Refetch to get new status
-      const updated = await apiClient.get<ContentUploadResponse>(
-        `/api/v1/content/${id}`
+      const updated = await callFunction<{ content_id: string }, ContentUploadResponse>(
+        'getContent', { content_id: id }
       );
       setContent(updated);
     } catch (err) {
@@ -122,9 +120,8 @@ export default function ContentDetailPage() {
     if (Object.keys(updates).length === 0) return;
 
     try {
-      const updated = await apiClient.patch<ContentUploadResponse>(
-        `/api/v1/content/${id}`,
-        updates
+      const updated = await callFunction<ContentUpdateRequest & { content_id: string }, ContentUploadResponse>(
+        'updateContent', { content_id: id, ...updates }
       );
       setContent(updated);
       success('Content updated', 'Your preferences have been saved.');

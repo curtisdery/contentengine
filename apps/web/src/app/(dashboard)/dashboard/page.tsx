@@ -17,7 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/stores/auth-store';
 import { cn } from '@/lib/utils';
-import { apiClient } from '@/lib/api';
+import { callFunction } from '@/lib/cloud-functions';
 import { ROUTES } from '@/lib/constants';
 import type {
   AnalyticsDashboardResponse,
@@ -81,9 +81,7 @@ function AutopilotWidget() {
   React.useEffect(() => {
     async function load() {
       try {
-        const data = await apiClient.get<AutopilotSummaryResponse>(
-          '/api/v1/autopilot/summary'
-        );
+        const data = await callFunction<Record<string, unknown>, AutopilotSummaryResponse>('getAutopilotSummary', {});
         setSummary(data);
       } catch {
         // API may not be available yet; silently ignore
@@ -192,11 +190,11 @@ export default function DashboardPage() {
     async function loadDashboardData() {
       try {
         const [dashboardData, connectionsData] = await Promise.all([
-          apiClient.get<AnalyticsDashboardResponse>('/api/v1/analytics/dashboard'),
-          apiClient.get<PlatformConnectionResponse[]>('/api/v1/connections'),
+          callFunction<{ days: number }, AnalyticsDashboardResponse>('getOverview', { days: 30 }),
+          callFunction<Record<string, unknown>, { items: PlatformConnectionResponse[]; total: number }>('listConnections', {}),
         ]);
         setDashboard(dashboardData);
-        setConnections(connectionsData);
+        setConnections(connectionsData.items);
       } catch {
         // If API is unavailable, leave as null (will show loading then fallback)
       } finally {

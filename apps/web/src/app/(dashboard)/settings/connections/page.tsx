@@ -21,7 +21,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
 import { Input } from '@/components/ui/input';
 import { getPlatformConfig, platformMap } from '@/components/content/platform-badge';
-import { apiClient, ApiClientError } from '@/lib/api';
+import { callFunction, ApiClientError } from '@/lib/cloud-functions';
 import { useToast } from '@/hooks/use-toast';
 import { useOAuthPopup } from '@/hooks/use-oauth-popup';
 import { ROUTES } from '@/lib/constants';
@@ -237,7 +237,7 @@ function BlueskyDialog({ open, onClose, onSuccess }: BlueskyDialogProps) {
 
     setIsSubmitting(true);
     try {
-      await apiClient.post('/api/v1/connections/bluesky/app-password', {
+      await callFunction('refreshConnection', {
         handle: handle.trim(),
         app_password: appPassword.trim(),
       });
@@ -346,10 +346,8 @@ export default function ConnectionsPage() {
   const fetchConnections = React.useCallback(async () => {
     setIsLoading(true);
     try {
-      const response = await apiClient.get<PlatformConnectionResponse[]>(
-        '/api/v1/connections'
-      );
-      setConnections(response);
+      const response = await callFunction<Record<string, unknown>, { items: PlatformConnectionResponse[]; total: number }>('listConnections', {});
+      setConnections(response.items);
     } catch {
       // Silently handle - connections might not be set up yet
       setConnections([]);
@@ -410,7 +408,7 @@ export default function ConnectionsPage() {
 
     setActioningPlatform(conn.platform_id);
     try {
-      await apiClient.delete(`/api/v1/connections/${connectionId}`);
+      await callFunction('disconnectPlatform', { connection_id: connectionId });
       showSuccess('Disconnected', `${getPlatformConfig(conn.platform_id).name} has been disconnected.`);
       await fetchConnections();
     } catch (err) {

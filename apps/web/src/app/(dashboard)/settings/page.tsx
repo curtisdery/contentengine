@@ -23,7 +23,7 @@ import { Avatar } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { useAuthStore } from '@/stores/auth-store';
 import { useToast } from '@/hooks/use-toast';
-import { apiClient } from '@/lib/api';
+import { callFunction } from '@/lib/cloud-functions';
 import { SUBSCRIPTION_LABELS, ROUTES } from '@/lib/constants';
 
 // ---------------------------------------------------------------------------
@@ -110,7 +110,7 @@ export default function SettingsPage() {
   const handleManageSubscription = async () => {
     setBillingLoading('portal');
     try {
-      const res = await apiClient.post<{ portal_url: string }>('/api/v1/billing/portal');
+      const res = await callFunction<Record<string, unknown>, { portal_url: string }>('createPortal', {});
       window.location.href = res.portal_url;
     } catch {
       showError('Billing Error', 'Unable to open subscription management. Please try again.');
@@ -121,11 +121,12 @@ export default function SettingsPage() {
   const handleUpgradeToPro = async () => {
     setBillingLoading('checkout');
     try {
-      const res = await apiClient.post<{ checkout_url: string }>('/api/v1/billing/create-checkout', {
+      const body = {
         tier: 'pro',
         success_url: `${window.location.origin}/settings?upgraded=true`,
         cancel_url: `${window.location.origin}/settings`,
-      });
+      };
+      const res = await callFunction<typeof body, { checkout_url: string }>('createCheckout', body);
       window.location.href = res.checkout_url;
     } catch {
       showError('Billing Error', 'Unable to start checkout. Please try again.');
