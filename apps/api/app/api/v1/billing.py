@@ -1,63 +1,56 @@
 from fastapi import APIRouter, Depends, Header, Request, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel
 
-from app.database import get_db
 from app.middleware.auth import get_current_user
-from app.models.user import User
-from app.schemas.billing import (
-    CreateCheckoutRequest,
-    CheckoutResponse,
-    PortalResponse,
-    SubscriptionResponse,
-)
 from app.services import billing as billing_service
 
 router = APIRouter()
 
 
-@router.post("/create-checkout", response_model=CheckoutResponse)
+class CheckoutRequest(BaseModel):
+    tier: str
+    period: str = "monthly"
+    success_url: str = ""
+    cancel_url: str = ""
+
+
+@router.post("/checkout")
 async def create_checkout(
-    request_body: CreateCheckoutRequest,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> CheckoutResponse:
+    body: CheckoutRequest,
+    current_user=Depends(get_current_user),
+) -> dict:
     """Create a Stripe checkout session for subscription upgrade."""
     return await billing_service.create_checkout_session(
-        db=db,
         user_id=current_user.id,
         user_email=current_user.email,
-        user_name=current_user.full_name,
-        request=request_body,
+        tier=body.tier,
+        success_url=body.success_url,
+        cancel_url=body.cancel_url,
     )
+
+
+@router.post("/portal")
+async def create_portal(
+    current_user=Depends(get_current_user),
+) -> dict:
+    """Create a Stripe billing portal session."""
+    return await billing_service.create_portal_session(user_id=current_user.id)
+
+
+@router.get("/status")
+async def get_status(
+    current_user=Depends(get_current_user),
+) -> dict:
+    """Get the current subscription status, usage, and limits."""
+    return await billing_service.get_subscription(user_id=current_user.id)
 
 
 @router.post("/webhook", status_code=status.HTTP_200_OK)
 async def stripe_webhook(
     request: Request,
-    db: AsyncSession = Depends(get_db),
     stripe_signature: str = Header(alias="stripe-signature"),
 ) -> dict:
-    """Handle incoming Stripe webhook events."""
+    """Handle incoming Stripe webhook events (no auth, signature verification only)."""
     payload = await request.body()
-    await billing_service.handle_webhook(
-        db=db, payload=payload, sig_header=stripe_signature
-    )
+    await billing_service.handle_webhook(payload=payload, sig_header=stripe_signature)
     return {"status": "ok"}
-
-
-@router.get("/subscription", response_model=SubscriptionResponse)
-async def get_subscription(
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> SubscriptionResponse:
-    """Get the current subscription details."""
-    return await billing_service.get_subscription(db=db, user_id=current_user.id)
-
-
-@router.post("/portal", response_model=PortalResponse)
-async def create_portal(
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> PortalResponse:
-    """Create a Stripe billing portal session."""
-    return await billing_service.create_portal_session(db=db, user_id=current_user.id)

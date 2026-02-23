@@ -1,11 +1,58 @@
 rules_version = '2';
-
-// All access goes through Cloud Functions using the Admin SDK.
-// Direct client access is denied for all collections.
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if false;
+
+    function isAuth() { return request.auth != null; }
+    function isOwner(userId) { return isAuth() && request.auth.uid == userId; }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow update: if isOwner(userId) &&
+        !request.resource.data.diff(resource.data).affectedKeys()
+          .hasAny(['subscription_tier', 'stripe_customer_id', 'subscription_status']);
+      allow create: if isAuth() && request.auth.uid == userId;
+      match /sessions/{sid} { allow read: if isOwner(userId); }
+      match /audit_log/{lid} { allow read: if isOwner(userId); }
     }
+
+    match /connected_platforms/{pid} {
+      allow read: if isAuth() && resource.data.user_id == request.auth.uid;
+      allow write: if false;
+    }
+    match /content_uploads/{uid} {
+      allow read: if isAuth() && resource.data.user_id == request.auth.uid;
+      allow write: if false;
+    }
+    match /generated_outputs/{oid} {
+      allow read: if isAuth() && resource.data.user_id == request.auth.uid;
+      allow write: if false;
+    }
+    match /scheduled_posts/{pid} {
+      allow read: if isAuth() && resource.data.user_id == request.auth.uid;
+      allow write: if false;
+    }
+    match /post_analytics/{aid} {
+      allow read: if isAuth() && resource.data.user_id == request.auth.uid;
+      allow write: if false;
+    }
+    match /multiplier_scores/{sid} {
+      allow read: if isAuth() && resource.data.user_id == request.auth.uid;
+      allow write: if false;
+    }
+    match /notifications/{nid} {
+      allow read: if isAuth() && resource.data.user_id == request.auth.uid;
+      allow update: if isAuth() && resource.data.user_id == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read', 'read_at']);
+    }
+    match /voice_profiles/{vid} {
+      allow read, write: if isAuth() && resource.data.user_id == request.auth.uid;
+      allow create: if isAuth() && request.resource.data.user_id == request.auth.uid;
+    }
+
+    match /rate_limits/{rid} { allow read, write: if false; }
+    match /oauth_states/{oid} { allow read, write: if false; }
+    match /milestones/{mid} { allow read, write: if false; }
+
+    match /{document=**} { allow read, write: if false; }
   }
 }

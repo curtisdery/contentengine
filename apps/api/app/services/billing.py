@@ -1,23 +1,20 @@
-import uuid
 from datetime import datetime
 
 import stripe
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.models.organization import Organization, OrganizationMember
-from app.models.subscription import Subscription
-from app.schemas.billing import (
-    CreateCheckoutRequest,
-    CheckoutResponse,
-    PortalResponse,
-    SubscriptionResponse,
-)
+from app.core.firestore import get_db
 from app.utils.exceptions import NotFoundError, ValidationError
 
 settings = get_settings()
 stripe.api_key = settings.STRIPE_SECRET_KEY
+
+TIER_LIMITS = {
+    "FREE":    {"uploads": 3,  "formats": 5,  "platforms": 2,  "voice_profiles": 1},
+    "STARTER": {"uploads": 10, "formats": 8,  "platforms": 3,  "voice_profiles": 1},
+    "GROWTH":  {"uploads": 20, "formats": 18, "platforms": 5,  "voice_profiles": 3},
+    "PRO":     {"uploads": -1, "formats": 18, "platforms": -1, "voice_profiles": -1},
+}
 
 TIER_PRICE_MAP = {
     "growth": settings.STRIPE_PRICE_GROWTH,
@@ -25,95 +22,129 @@ TIER_PRICE_MAP = {
 }
 
 
-async def _get_user_organization(
-    db: AsyncSession, user_id: uuid.UUID
-) -> Organization:
-    """Get the organization owned by the user (first owned org)."""
-    result = await db.execute(
-        select(Organization).where(Organization.owner_id == user_id)
-    )
-    org = result.scalar_one_or_none()
-    if not org:
+async def _get_user_doc(user_id: str):
+    """Get user document from Firestore."""
+    db = get_db()
+    doc = await db.collection("users").document(user_id).get()
+    if not doc.exists:
         raise NotFoundError(
-            message="Organization not found",
-            detail="No organization found for this user",
+            message="User not found",
+            detail="No user found with this ID",
         )
-    return org
+    return doc
 
 
-async def _get_or_create_stripe_customer(
-    db: AsyncSession, subscription: Subscription, email: str, name: str
-) -> str:
+async def _get_or_create_stripe_customer(user_id: str, email: str) -> str:
     """Get existing Stripe customer ID or create a new one."""
-    if subscription.stripe_customer_id:
-        return subscription.stripe_customer_id
+    db = get_db()
+    doc = await db.collection("users").document(user_id).get()
+    data = doc.to_dict()
+
+    if data.get("stripe_customer_id"):
+        return data["stripe_customer_id"]
 
     customer = stripe.Customer.create(
         email=email,
-        name=name,
-        metadata={"organization_id": str(subscription.organization_id)},
+        metadata={"user_id": user_id},
     )
-    subscription.stripe_customer_id = customer.id
-    await db.flush()
+    await db.collection("users").document(user_id).update({
+        "stripe_customer_id": customer.id,
+        "updated_at": datetime.utcnow(),
+    })
     return customer.id
 
 
+def get_tier_limits(tier: str) -> dict:
+    """Get usage limits for a subscription tier."""
+    return TIER_LIMITS.get(tier.upper(), TIER_LIMITS["FREE"])
+
+
+async def check_usage_limit(user_id: str, limit_key: str) -> bool:
+    """Check if user is within their tier's usage limit for a given key."""
+    doc = await _get_user_doc(user_id)
+    data = doc.to_dict()
+    tier = data.get("subscription_tier", "FREE")
+    limits = get_tier_limits(tier)
+    max_allowed = limits.get(limit_key, 0)
+    if max_allowed == -1:
+        return True
+    current_usage = data.get("usage_this_period", {}).get(limit_key, 0)
+    return current_usage < max_allowed
+
+
+async def increment_usage(user_id: str, limit_key: str) -> None:
+    """Increment a usage counter for the current billing period."""
+    db = get_db()
+    from google.cloud.firestore_v1 import Increment
+    await db.collection("users").document(user_id).update({
+        f"usage_this_period.{limit_key}": Increment(1),
+        "updated_at": datetime.utcnow(),
+    })
+
+
 async def create_checkout_session(
-    db: AsyncSession,
-    user_id: uuid.UUID,
-    user_email: str,
-    user_name: str,
-    request: CreateCheckoutRequest,
-) -> CheckoutResponse:
+    user_id: str, user_email: str, tier: str, success_url: str, cancel_url: str
+) -> dict:
     """Create a Stripe checkout session for subscription upgrade."""
-    org = await _get_user_organization(db, user_id)
-
-    # Get or create subscription
-    result = await db.execute(
-        select(Subscription).where(Subscription.organization_id == org.id)
-    )
-    subscription = result.scalar_one_or_none()
-    if not subscription:
-        raise NotFoundError(
-            message="Subscription not found",
-            detail="No subscription found for this organization",
-        )
-
-    price_id = TIER_PRICE_MAP.get(request.tier)
+    price_id = TIER_PRICE_MAP.get(tier)
     if not price_id:
         raise ValidationError(
             message="Invalid tier",
-            detail=f"Tier '{request.tier}' is not available for checkout",
+            detail=f"Tier '{tier}' is not available for checkout",
         )
 
-    customer_id = await _get_or_create_stripe_customer(
-        db, subscription, user_email, user_name
-    )
+    customer_id = await _get_or_create_stripe_customer(user_id, user_email)
 
     checkout_session = stripe.checkout.Session.create(
         customer=customer_id,
         payment_method_types=["card"],
-        line_items=[
-            {
-                "price": price_id,
-                "quantity": 1,
-            }
-        ],
+        line_items=[{"price": price_id, "quantity": 1}],
         mode="subscription",
-        success_url=request.success_url,
-        cancel_url=request.cancel_url,
-        metadata={
-            "organization_id": str(org.id),
-            "tier": request.tier,
-        },
+        success_url=success_url,
+        cancel_url=cancel_url,
+        metadata={"user_id": user_id, "tier": tier},
     )
 
-    return CheckoutResponse(checkout_url=checkout_session.url)
+    return {"checkout_url": checkout_session.url}
 
 
-async def handle_webhook(
-    db: AsyncSession, payload: bytes, sig_header: str
-) -> None:
+async def create_portal_session(user_id: str) -> dict:
+    """Create a Stripe billing portal session."""
+    doc = await _get_user_doc(user_id)
+    data = doc.to_dict()
+
+    if not data.get("stripe_customer_id"):
+        raise ValidationError(
+            message="No billing account",
+            detail="No Stripe customer found. Please set up a subscription first.",
+        )
+
+    portal_session = stripe.billing_portal.Session.create(
+        customer=data["stripe_customer_id"],
+        return_url=f"{settings.FRONTEND_URL}/settings/billing",
+    )
+
+    return {"portal_url": portal_session.url}
+
+
+async def get_subscription(user_id: str) -> dict:
+    """Get the current subscription status for a user."""
+    doc = await _get_user_doc(user_id)
+    data = doc.to_dict()
+
+    return {
+        "user_id": user_id,
+        "tier": data.get("subscription_tier", "FREE"),
+        "status": data.get("subscription_status", "incomplete"),
+        "stripe_customer_id": data.get("stripe_customer_id"),
+        "stripe_subscription_id": data.get("stripe_subscription_id"),
+        "current_period_end": data.get("current_period_end"),
+        "usage": data.get("usage_this_period", {}),
+        "limits": get_tier_limits(data.get("subscription_tier", "FREE")),
+    }
+
+
+async def handle_webhook(payload: bytes, sig_header: str) -> None:
     """Handle incoming Stripe webhook events."""
     try:
         event = stripe.Webhook.construct_event(
@@ -133,128 +164,83 @@ async def handle_webhook(
     data = event["data"]["object"]
 
     if event_type == "checkout.session.completed":
-        await _handle_checkout_completed(db, data)
+        await _handle_checkout_completed(data)
     elif event_type == "customer.subscription.updated":
-        await _handle_subscription_updated(db, data)
+        await _handle_subscription_updated(data)
     elif event_type == "customer.subscription.deleted":
-        await _handle_subscription_deleted(db, data)
+        await _handle_subscription_deleted(data)
     elif event_type == "invoice.payment_failed":
-        await _handle_payment_failed(db, data)
+        await _handle_payment_failed(data)
 
 
-async def _handle_checkout_completed(db: AsyncSession, data: dict) -> None:
-    """Handle successful checkout -- activate subscription."""
+async def _handle_checkout_completed(data: dict) -> None:
+    """Handle successful checkout — activate subscription."""
+    db = get_db()
     customer_id = data.get("customer")
     subscription_id = data.get("subscription")
     metadata = data.get("metadata", {})
-    tier = metadata.get("tier", "growth")
+    tier = metadata.get("tier", "GROWTH").upper()
+    user_id = metadata.get("user_id")
 
-    result = await db.execute(
-        select(Subscription).where(Subscription.stripe_customer_id == customer_id)
-    )
-    subscription = result.scalar_one_or_none()
-    if subscription:
-        subscription.stripe_subscription_id = subscription_id
-        subscription.tier = tier
-        subscription.status = "active"
-        await db.flush()
+    if user_id:
+        await db.collection("users").document(user_id).update({
+            "stripe_subscription_id": subscription_id,
+            "subscription_tier": tier,
+            "subscription_status": "active",
+            "updated_at": datetime.utcnow(),
+        })
 
 
-async def _handle_subscription_updated(db: AsyncSession, data: dict) -> None:
+async def _handle_subscription_updated(data: dict) -> None:
     """Handle subscription updates from Stripe."""
+    db = get_db()
     stripe_sub_id = data.get("id")
     status = data.get("status")
 
-    result = await db.execute(
-        select(Subscription).where(
-            Subscription.stripe_subscription_id == stripe_sub_id
-        )
-    )
-    subscription = result.scalar_one_or_none()
-    if subscription:
-        subscription.status = status
-        subscription.cancel_at_period_end = data.get("cancel_at_period_end", False)
-
-        current_period_start = data.get("current_period_start")
-        current_period_end = data.get("current_period_end")
-        if current_period_start:
-            subscription.current_period_start = datetime.utcfromtimestamp(
-                current_period_start
-            )
-        if current_period_end:
-            subscription.current_period_end = datetime.utcfromtimestamp(
-                current_period_end
-            )
-        await db.flush()
+    # Find user by stripe_subscription_id
+    query = db.collection("users").where("stripe_subscription_id", "==", stripe_sub_id).limit(1)
+    docs = [doc async for doc in query.stream()]
+    if docs:
+        updates = {
+            "subscription_status": status,
+            "updated_at": datetime.utcnow(),
+        }
+        period_end = data.get("current_period_end")
+        if period_end:
+            updates["current_period_end"] = datetime.utcfromtimestamp(period_end)
+        await docs[0].reference.update(updates)
 
 
-async def _handle_subscription_deleted(db: AsyncSession, data: dict) -> None:
+async def _handle_subscription_deleted(data: dict) -> None:
     """Handle subscription cancellation."""
+    db = get_db()
     stripe_sub_id = data.get("id")
 
-    result = await db.execute(
-        select(Subscription).where(
-            Subscription.stripe_subscription_id == stripe_sub_id
-        )
-    )
-    subscription = result.scalar_one_or_none()
-    if subscription:
-        subscription.status = "canceled"
-        subscription.cancel_at_period_end = False
-        await db.flush()
+    query = db.collection("users").where("stripe_subscription_id", "==", stripe_sub_id).limit(1)
+    docs = [doc async for doc in query.stream()]
+    if docs:
+        await docs[0].reference.update({
+            "subscription_status": "canceled",
+            "subscription_tier": "FREE",
+            "usage_this_period": {
+                "content_uploads": 0,
+                "generations_run": 0,
+                "outputs_generated": 0,
+                "posts_published": 0,
+            },
+            "updated_at": datetime.utcnow(),
+        })
 
 
-async def _handle_payment_failed(db: AsyncSession, data: dict) -> None:
+async def _handle_payment_failed(data: dict) -> None:
     """Handle failed invoice payment."""
+    db = get_db()
     customer_id = data.get("customer")
 
-    result = await db.execute(
-        select(Subscription).where(Subscription.stripe_customer_id == customer_id)
-    )
-    subscription = result.scalar_one_or_none()
-    if subscription:
-        subscription.status = "past_due"
-        await db.flush()
-
-
-async def get_subscription(
-    db: AsyncSession, user_id: uuid.UUID
-) -> SubscriptionResponse:
-    """Get the current subscription for the user's organization."""
-    org = await _get_user_organization(db, user_id)
-
-    result = await db.execute(
-        select(Subscription).where(Subscription.organization_id == org.id)
-    )
-    subscription = result.scalar_one_or_none()
-    if not subscription:
-        raise NotFoundError(
-            message="Subscription not found",
-            detail="No subscription found for this organization",
-        )
-
-    return SubscriptionResponse.model_validate(subscription)
-
-
-async def create_portal_session(
-    db: AsyncSession, user_id: uuid.UUID
-) -> PortalResponse:
-    """Create a Stripe billing portal session."""
-    org = await _get_user_organization(db, user_id)
-
-    result = await db.execute(
-        select(Subscription).where(Subscription.organization_id == org.id)
-    )
-    subscription = result.scalar_one_or_none()
-    if not subscription or not subscription.stripe_customer_id:
-        raise ValidationError(
-            message="No billing account",
-            detail="No Stripe customer found. Please set up a subscription first.",
-        )
-
-    portal_session = stripe.billing_portal.Session.create(
-        customer=subscription.stripe_customer_id,
-        return_url=f"{settings.FRONTEND_URL}/settings/billing",
-    )
-
-    return PortalResponse(portal_url=portal_session.url)
+    query = db.collection("users").where("stripe_customer_id", "==", customer_id).limit(1)
+    docs = [doc async for doc in query.stream()]
+    if docs:
+        await docs[0].reference.update({
+            "subscription_status": "past_due",
+            "updated_at": datetime.utcnow(),
+        })
