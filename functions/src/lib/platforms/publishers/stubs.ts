@@ -24,9 +24,6 @@ function stubPublisher(platformName: string): PlatformPublisher {
   };
 }
 
-export const InstagramPublisher = stubPublisher("Instagram");
-export const YouTubePublisher = stubPublisher("YouTube");
-export const TikTokPublisher = stubPublisher("TikTok");
 export const PinterestPublisher = stubPublisher("Pinterest");
 export const RedditPublisher = stubPublisher("Reddit");
 export const MediumPublisher = stubPublisher("Medium");

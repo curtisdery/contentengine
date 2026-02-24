@@ -1,37 +1,18 @@
 services:
-  # ---- PostgreSQL ----
-  postgres:
-    image: postgres:16-alpine
-    container_name: pando-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-pando}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pando_dev_password}
-      POSTGRES_DB: ${POSTGRES_DB:-pandocast}
+  # ---- Firebase Emulators ----
+  emulators:
+    image: node:22-alpine
+    container_name: pando-emulators
+    working_dir: /app
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "4000:4000"   # Emulator Suite UI
+      - "5001:5001"   # Cloud Functions
+      - "8080:8080"   # Firestore
+      - "9099:9099"   # Authentication
+      - "9199:9199"   # Cloud Storage
     volumes:
-      - pando_postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pando} -d ${POSTGRES_DB:-pandocast}"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  # ---- Redis ----
-  redis:
-    image: redis:7-alpine
-    container_name: pando-redis
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
-    volumes:
-      - pando_redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      - .:/app
+    command: npx firebase emulators:start --project pandocast-af179
 
   # ---- FastAPI Backend ----
   api:
@@ -43,39 +24,16 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-pando}:${POSTGRES_PASSWORD:-pando_dev_password}@postgres:5432/${POSTGRES_DB:-pandocast}
-      REDIS_URL: redis://redis:6379/0
+      FIRESTORE_EMULATOR_HOST: emulators:8080
+      FIREBASE_AUTH_EMULATOR_HOST: emulators:9099
+      FIREBASE_STORAGE_EMULATOR_HOST: emulators:9199
     ports:
       - "8000:8000"
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      - emulators
     volumes:
       - ./apps/api:/app
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-
-  # ---- Background Worker ----
-  worker:
-    build:
-      context: ./apps/api
-      dockerfile: Dockerfile
-    container_name: pando-worker
-    restart: unless-stopped
-    env_file:
-      - .env
-    environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-pando}:${POSTGRES_PASSWORD:-pando_dev_password}@postgres:5432/${POSTGRES_DB:-pandocast}
-      REDIS_URL: redis://redis:6379/0
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    volumes:
-      - ./apps/api:/app
-    command: python -m app.worker
 
   # ---- Next.js Frontend ----
   web:
@@ -85,12 +43,8 @@ services:
     container_name: pando-web
     restart: unless-stopped
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NEXT_PUBLIC_FIREBASE_FUNCTIONS_EMULATOR: "true"
     ports:
       - "3000:3000"
     depends_on:
-      - api
-
-volumes:
-  pando_postgres_data:
-  pando_redis_data:
+      - emulators

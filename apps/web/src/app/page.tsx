@@ -837,7 +837,7 @@ function PricingSection() {
       icon: Zap,
     },
     {
-      name: 'Creator',
+      name: 'Growth',
       price: '$29',
       period: '/mo',
       desc: 'For serious content creators.',

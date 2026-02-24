@@ -43,16 +43,34 @@ describe("getPublisher", () => {
   });
 });
 
+// ─── Real publishers (registered but not stubs) ──────────────────────────────
+
+describe("real publishers", () => {
+  const realPlatforms = [
+    "instagram_carousel",
+    "instagram_caption",
+    "youtube_longform",
+    "short_form_video",
+  ];
+
+  it.each(realPlatforms)("returns a real publisher for %s", (platformId) => {
+    const publisher = getPublisher(platformId);
+    expect(publisher).toBeDefined();
+  });
+
+  it("instagram returns the same instance for carousel and caption", () => {
+    const carousel = getPublisher("instagram_carousel");
+    const caption = getPublisher("instagram_caption");
+    expect(carousel).toBe(caption);
+  });
+});
+
 // ─── Stub publishers ──────────────────────────────────────────────────────────
 
 describe("stub publishers", () => {
   const stubPlatforms = [
-    "instagram_carousel",
-    "instagram_caption",
     "pinterest_pin",
     "medium_post",
-    "youtube_longform",
-    "short_form_video",
     "reddit_post",
     "quora_answer",
   ];
@@ -63,7 +81,7 @@ describe("stub publishers", () => {
   });
 
   it("stub publisher publish() returns success: false", async () => {
-    const publisher = getPublisher("instagram_carousel")!;
+    const publisher = getPublisher("pinterest_pin")!;
     const result = await publisher.publish("content", {}, {
       accessToken: "t",
       refreshToken: null,
@@ -75,7 +93,7 @@ describe("stub publishers", () => {
   });
 
   it("stub publisher validateConnection() returns false", async () => {
-    const publisher = getPublisher("instagram_carousel")!;
+    const publisher = getPublisher("pinterest_pin")!;
     const result = await publisher.validateConnection({
       accessToken: "t",
       refreshToken: null,

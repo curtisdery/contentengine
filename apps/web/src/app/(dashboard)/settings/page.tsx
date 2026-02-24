@@ -118,11 +118,11 @@ export default function SettingsPage() {
     }
   };
 
-  const handleUpgradeToPro = async () => {
+  const handleUpgrade = async (tier: 'growth' | 'pro') => {
     setBillingLoading('checkout');
     try {
       const body = {
-        tier: 'pro',
+        tier,
         success_url: `${window.location.origin}/settings?upgraded=true`,
         cancel_url: `${window.location.origin}/settings`,
       };
@@ -278,10 +278,10 @@ export default function SettingsPage() {
                 </p>
                 <Badge
                   variant={
-                    subscriptionTier === 'enterprise'
-                      ? 'secondary'
-                      : subscriptionTier === 'pro'
+                    subscriptionTier === 'pro'
                       ? 'default'
+                      : subscriptionTier === 'growth'
+                      ? 'secondary'
                       : 'outline'
                   }
                 >
@@ -292,8 +292,10 @@ export default function SettingsPage() {
                 {subscriptionTier === 'free'
                   ? 'Upgrade to unlock more content multiplications and platform integrations.'
                   : subscriptionTier === 'pro'
-                  ? 'You have access to advanced content features and priority support.'
-                  : 'Full access to all features including custom integrations and dedicated support.'}
+                  ? 'Unlimited uploads, autopilot scheduling, A/B testing, and full analytics.'
+                  : subscriptionTier === 'growth'
+                  ? 'All 18 platforms, brand voice profiles, content calendar, and priority generation.'
+                  : 'You have access to content features and platform integrations.'}
               </p>
             </div>
           </div>
@@ -309,7 +311,17 @@ export default function SettingsPage() {
             </Button>
             {subscriptionTier === 'free' && (
               <Button
-                onClick={handleUpgradeToPro}
+                onClick={() => handleUpgrade('growth')}
+                isLoading={billingLoading === 'checkout'}
+                disabled={billingLoading !== null}
+              >
+                Upgrade to Growth
+              </Button>
+            )}
+            {(subscriptionTier === 'free' || subscriptionTier === 'starter' || subscriptionTier === 'growth') && subscriptionTier !== 'free' && (
+              <Button
+                variant="outline"
+                onClick={() => handleUpgrade('pro')}
                 isLoading={billingLoading === 'checkout'}
                 disabled={billingLoading !== null}
               >

@@ -4,11 +4,14 @@
 Pandocast (PANDO) — a platform that lets solo content creators upload one piece of content and receive 18+ platform-ready formats back with intelligent scheduling, native analytics, and brand voice consistency. Upload once. Pando everywhere.
 
 ## Architecture
-Monorepo with two apps:
-- `apps/api/` — Python FastAPI backend on Cloud Run (port 8000)
-- `apps/web/` — Next.js 14 frontend (port 3000)
+Monorepo with three components:
+- `functions/` — 78 Cloud Functions (2nd gen, TypeScript) — **primary backend**
+- `apps/web/` — Next.js 14 frontend (port 3000), deployed to Firebase Hosting
+- `apps/api/` — Python FastAPI backend on Cloud Run (legacy, frontend does not call this)
 
-Infrastructure: Firestore (native mode), Cloud Storage for Firebase, Cloud Tasks
+Frontend calls Cloud Functions exclusively via `httpsCallable`. The FastAPI backend exists for Cloud Run worker tasks and internal endpoints.
+
+Infrastructure: Firestore (native mode), Cloud Storage for Firebase, Cloud Tasks, Firebase Hosting
 
 ## Quick Start
 ```bash
@@ -54,10 +57,10 @@ Copy `.env.example` to `.env` before running. Never commit `.env`.
 Cloud Functions env: `functions/.env` (config strings) + Secret Manager (secrets).
 
 ## API Design
-- FastAPI backend: endpoints under `/api/v1/`, Pydantic v2 validation
-- Cloud Functions: `onCall` (callable) + `onRequest` (webhooks) + `onSchedule` (cron)
+- Cloud Functions (primary): `onCall` (64 callable) + `onRequest` (4 webhooks) + `onSchedule` (6 cron) + Firestore trigger (1)
+- FastAPI (legacy): endpoints under `/api/v1/`, Pydantic v2 validation
 - Firebase Auth for authentication
-- API-first: every feature is an API endpoint first
+- Frontend communicates only via Cloud Functions `httpsCallable`
 
 ## Database
 - Firestore (native mode) — no PostgreSQL, no Redis
@@ -98,13 +101,16 @@ You are a Strategic AI Engineering Copilot for Pandocast. The operator is a vibe
 
 ### Validated Architecture (treat as decided facts — no hedging)
 
-- Monorepo: FastAPI backend + Next.js 14 frontend. Decided.
+- Monorepo: Cloud Functions (TypeScript) as primary backend + Next.js 14 frontend. Decided.
 - Database: Firestore (native mode). No PostgreSQL. No Redis. Decided.
-- Backend: FastAPI on Cloud Run. Background jobs via Cloud Tasks + worker service. Decided.
+- Backend: 78 Cloud Functions (2nd gen). FastAPI on Cloud Run for internal/worker tasks only. Decided.
+- Background jobs: Cloud Tasks → Cloud Functions onRequest handlers. Decided.
 - Storage: Cloud Storage for Firebase. Decided.
-- Billing: Stripe. Decided.
+- Billing: Stripe via Cloud Functions. Decided.
 - AI: Anthropic Claude API via FORGE cognitive architecture. Decided.
-- E2E tests: 109/109 passing. Don't break them.
+- Hosting: Firebase Hosting with SSR for Next.js. Decided.
+- Cloud Functions tests: 313/313 passing. Don't break them.
+- E2E tests: 109/109 passing (require dev server). Don't break them.
 
 ### FORGE Cognitive Architecture (AI layer for content transformation)
 

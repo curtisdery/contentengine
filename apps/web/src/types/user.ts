@@ -10,7 +10,7 @@ export interface User {
   updated_at: string;
 }
 
-export type SubscriptionTier = 'free' | 'pro' | 'enterprise';
+export type SubscriptionTier = 'free' | 'starter' | 'growth' | 'pro';
 
 export interface UserProfile {
   id: string;
