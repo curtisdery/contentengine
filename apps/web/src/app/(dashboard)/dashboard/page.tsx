@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import {
   Upload,
   FileOutput,
@@ -72,7 +72,6 @@ function StatCard({ title, value, icon, description, glow, accentColor, loading 
 // ---------------------------------------------------------------------------
 
 function AutopilotWidget() {
-  const router = useRouter();
   const [summary, setSummary] = React.useState<AutopilotSummaryResponse | null>(
     null
   );
@@ -104,23 +103,15 @@ function AutopilotWidget() {
   const hasEligible = summary.eligible_not_enabled > 0;
 
   return (
+    <Link href={ROUTES.SETTINGS_AUTOPILOT} className="block group">
     <Card
       className={cn(
-        'group cursor-pointer transition-all duration-300',
+        'cursor-pointer transition-all duration-300',
         hasEligible
           ? 'border-cme-secondary/30 hover:border-cme-secondary/50'
           : 'hover:border-cme-border-bright'
       )}
       glow={hasEligible ? 'secondary' : 'none'}
-      onClick={() => router.push(ROUTES.SETTINGS_AUTOPILOT)}
-      role="link"
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          router.push(ROUTES.SETTINGS_AUTOPILOT);
-        }
-      }}
     >
       <CardContent className="flex items-center gap-4 p-5">
         <div
@@ -171,6 +162,7 @@ function AutopilotWidget() {
         <ArrowUpRight className="ml-auto h-4 w-4 shrink-0 text-cme-text-muted opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
       </CardContent>
     </Card>
+    </Link>
   );
 }
 
@@ -179,7 +171,6 @@ function AutopilotWidget() {
 // ---------------------------------------------------------------------------
 
 export default function DashboardPage() {
-  const router = useRouter();
   const { user } = useAuthStore();
 
   const [dashboard, setDashboard] = React.useState<AnalyticsDashboardResponse | null>(null);
@@ -316,40 +307,34 @@ export default function DashboardPage() {
 
       {/* Next-Step CTA — guides user through the workflow until first publish */}
       {nextStep && (
-        <Card
-          glow="primary"
-          className="relative overflow-hidden cursor-pointer group"
-          onClick={() => router.push(nextStep!.href)}
-          role="link"
-          tabIndex={0}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              router.push(nextStep!.href);
-            }
-          }}
-        >
-          <div className="absolute inset-0 bg-gradient-to-br from-cme-primary/5 via-transparent to-cme-secondary/5 pointer-events-none" />
-          <CardContent className="relative flex flex-col items-center justify-center py-16 text-center">
-            <div className="mb-6 rounded-2xl bg-cme-primary/10 p-5 transition-transform duration-300 group-hover:scale-110 text-cme-primary">
-              {nextStep.icon}
-            </div>
-            <h2 className="mb-2 text-2xl font-semibold text-cme-text">
-              {nextStep.title}
-            </h2>
-            <p className="mb-8 max-w-md text-cme-text-muted">
-              {nextStep.description}
-            </p>
-            <Button
-              size="lg"
-              className="gap-2"
-              onClick={() => router.push(nextStep!.href)}
-            >
-              Get Started
-              <ArrowUpRight className="h-4 w-4" />
-            </Button>
-          </CardContent>
-        </Card>
+        <Link href={nextStep.href} className="block group">
+          <Card
+            glow="primary"
+            className="relative overflow-hidden cursor-pointer"
+          >
+            <div className="absolute inset-0 bg-gradient-to-br from-cme-primary/5 via-transparent to-cme-secondary/5 pointer-events-none" />
+            <CardContent className="relative flex flex-col items-center justify-center py-16 text-center">
+              <div className="mb-6 rounded-2xl bg-cme-primary/10 p-5 transition-transform duration-300 group-hover:scale-110 text-cme-primary">
+                {nextStep.icon}
+              </div>
+              <h2 className="mb-2 text-2xl font-semibold text-cme-text">
+                {nextStep.title}
+              </h2>
+              <p className="mb-8 max-w-md text-cme-text-muted">
+                {nextStep.description}
+              </p>
+              <span className={cn(
+                'inline-flex items-center justify-center gap-2 rounded-lg px-6 h-12 text-base font-medium',
+                'bg-cme-primary text-white hover:bg-cme-primary-hover active:scale-[0.98]',
+                'shadow-[0_0_20px_rgba(108,92,231,0.2)] hover:shadow-[0_0_30px_rgba(108,92,231,0.35)]',
+                'transition-all duration-200',
+              )}>
+                Get Started
+                <ArrowUpRight className="h-4 w-4" />
+              </span>
+            </CardContent>
+          </Card>
+        </Link>
       )}
 
       {/* Recent Activity — show only after user has published content */}
@@ -360,15 +345,13 @@ export default function DashboardPage() {
               <h2 className="text-lg font-semibold text-cme-text">
                 Recent Activity
               </h2>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-cme-text-muted hover:text-cme-text gap-1"
-                onClick={() => router.push(ROUTES.ANALYTICS)}
+              <Link
+                href={ROUTES.ANALYTICS}
+                className="inline-flex items-center gap-1 rounded-lg px-3 h-8 text-xs font-medium text-cme-text-muted hover:text-cme-text hover:bg-cme-surface-hover transition-colors"
               >
                 View Analytics
                 <ArrowUpRight className="h-3 w-3" />
-              </Button>
+              </Link>
             </div>
             <div className="grid gap-3 sm:grid-cols-3">
               <div className="rounded-lg bg-cme-surface/50 p-4">
@@ -436,39 +419,28 @@ interface QuickActionCardProps {
 }
 
 function QuickActionCard({ title, description, icon, accentColor, href }: QuickActionCardProps) {
-  const router = useRouter();
-
   return (
-    <Card
-      className="group cursor-pointer hover:border-cme-border-bright transition-all duration-300"
-      onClick={() => router.push(href)}
-      role="link"
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          router.push(href);
-        }
-      }}
-    >
-      <CardContent className="flex items-center gap-4 p-5">
-        <div
-          className="shrink-0 rounded-lg p-2.5 transition-all duration-300 group-hover:scale-110"
-          style={{
-            backgroundColor: `${accentColor}15`,
-            color: accentColor,
-          }}
-        >
-          {icon}
-        </div>
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-cme-text group-hover:text-white transition-colors">
-            {title}
-          </p>
-          <p className="text-xs text-cme-text-muted">{description}</p>
-        </div>
-        <ArrowUpRight className="ml-auto h-4 w-4 shrink-0 text-cme-text-muted opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-      </CardContent>
-    </Card>
+    <Link href={href} className="block group">
+      <Card className="cursor-pointer hover:border-cme-border-bright transition-all duration-300">
+        <CardContent className="flex items-center gap-4 p-5">
+          <div
+            className="shrink-0 rounded-lg p-2.5 transition-all duration-300 group-hover:scale-110"
+            style={{
+              backgroundColor: `${accentColor}15`,
+              color: accentColor,
+            }}
+          >
+            {icon}
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-cme-text group-hover:text-white transition-colors">
+              {title}
+            </p>
+            <p className="text-xs text-cme-text-muted">{description}</p>
+          </div>
+          <ArrowUpRight className="ml-auto h-4 w-4 shrink-0 text-cme-text-muted opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+        </CardContent>
+      </Card>
+    </Link>
   );
 }
