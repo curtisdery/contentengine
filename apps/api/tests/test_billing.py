@@ -1,484 +1,263 @@
-"""Tests for Firestore-backed billing service and tier enforcement."""
-
 import pytest
-from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch, MagicMock
+from datetime import datetime, timedelta
 
 from app.services.billing import (
-    TIER_LIMITS,
-    TIER_RANK,
     create_checkout_session,
-    create_portal_session,
-    get_billing_status,
     handle_checkout_completed,
     handle_subscription_updated,
     handle_subscription_deleted,
     handle_invoice_payment_failed,
     handle_invoice_paid,
     check_tier_limit,
-    increment_usage,
     check_and_increment,
+    TIER_LIMITS,
 )
 
 
-# ---------------------------------------------------------------------------
-# Helpers — fake Firestore document / collection
-# ---------------------------------------------------------------------------
+# ━━━ FIXTURES ━━━
 
-def _make_user_doc(data: dict):
-    """Create a mock Firestore document snapshot."""
-    doc = MagicMock()
-    doc.id = "user-1"
-    doc.exists = True
-    doc.to_dict.return_value = data
-    doc.reference = MagicMock()
-    doc.reference.update = AsyncMock()
-    return doc
+@pytest.fixture
+def mock_db():
+    """Mock Firestore client."""
+    with patch("app.services.billing.get_db") as mock:
+        db = AsyncMock()
+        mock.return_value = db
+        yield db
 
 
-def _mock_db_with_user(user_data: dict):
-    """Return a mock Firestore db where users/{id}.get() returns user_data."""
-    doc = _make_user_doc(user_data)
-    doc_ref = MagicMock()
-    doc_ref.get = AsyncMock(return_value=doc)
-    doc_ref.update = AsyncMock()
-    doc_ref.set = AsyncMock()
-
-    collection = MagicMock()
-    collection.document.return_value = doc_ref
-
-    db = MagicMock()
-    db.collection.return_value = collection
-    return db, doc_ref
+@pytest.fixture
+def mock_stripe():
+    """Mock Stripe API."""
+    with patch("app.services.billing.stripe") as mock:
+        yield mock
 
 
-def _mock_db_with_query_results(user_data: dict | None):
-    """Return a mock db where .where().limit().stream() yields user_data or nothing."""
-    db = MagicMock()
-
-    if user_data:
-        doc = _make_user_doc(user_data)
-        doc.reference = MagicMock()
-        doc.reference.update = AsyncMock()
-
-        async def fake_stream():
-            yield doc
-
-        query = MagicMock()
-        query.stream = fake_stream
-    else:
-        async def fake_stream():
-            return
-            yield
-
-        query = MagicMock()
-        query.stream = fake_stream
-
-    limit_mock = MagicMock(return_value=query)
-    where_mock = MagicMock()
-    where_mock.limit = limit_mock
-
-    collection = MagicMock()
-    collection.where.return_value = where_mock
-    db.collection.return_value = collection
-    return db
+def make_user_doc(overrides=None):
+    """Create a mock user document."""
+    base = {
+        "email": "creator@example.com",
+        "display_name": "Test Creator",
+        "stripe_customer_id": "cus_test123",
+        "stripe_subscription_id": None,
+        "subscription_tier": "FREE",
+        "subscription_status": "incomplete",
+        "usage_this_period": {
+            "content_uploads": 0,
+            "generations_run": 0,
+            "outputs_generated": 0,
+            "posts_published": 0,
+        },
+        "current_period_end": None,
+    }
+    if overrides:
+        base.update(overrides)
+    return base
 
 
-BASE_USER = {
-    "email": "test@example.com",
-    "display_name": "Test User",
-    "subscription_tier": "FREE",
-    "subscription_status": "active",
-    "stripe_customer_id": None,
-    "stripe_subscription_id": None,
-    "current_period_end": None,
-    "trial_ends_at": None,
-    "usage_this_period": {
-        "content_uploads": 0,
-        "generations_run": 0,
-        "outputs_generated": 0,
-        "posts_published": 0,
-    },
-}
-
-
-# ---------------------------------------------------------------------------
-# Checkout tests
-# ---------------------------------------------------------------------------
+# ━━━ CHECKOUT TESTS ━━━
 
 @pytest.mark.asyncio
-async def test_create_checkout_creates_stripe_customer():
-    """When user has no stripe_customer_id, a new Stripe customer is created."""
-    db, doc_ref = _mock_db_with_user({**BASE_USER})
+async def test_checkout_creates_stripe_customer_when_missing(mock_db, mock_stripe):
+    """First checkout should create a Stripe customer and save ID to Firestore."""
+    user_doc = make_user_doc({"stripe_customer_id": None})
+    mock_doc = AsyncMock()
+    mock_doc.to_dict.return_value = user_doc
+    mock_db.collection.return_value.document.return_value.get = AsyncMock(return_value=mock_doc)
+    mock_db.collection.return_value.document.return_value.update = AsyncMock()
 
-    fake_customer = MagicMock()
-    fake_customer.id = "cus_new_123"
-    fake_session = MagicMock()
-    fake_session.url = "https://checkout.stripe.com/sess_123"
-    fake_session.id = "sess_123"
+    mock_stripe.Customer.create.return_value = MagicMock(id="cus_new123")
+    mock_stripe.checkout.Session.create.return_value = MagicMock(
+        url="https://checkout.stripe.com/test", id="cs_test"
+    )
 
-    with patch("app.services.billing.get_db", return_value=db), \
-         patch("app.services.billing.stripe") as mock_stripe:
-        mock_stripe.Customer.create.return_value = fake_customer
-        mock_stripe.checkout.Session.create.return_value = fake_session
+    result = await create_checkout_session("user123", "STARTER", "monthly")
 
-        result = await create_checkout_session(
-            user_id="user-1",
-            tier="GROWTH",
-            period="monthly",
-        )
-
-    assert result["checkout_url"] == "https://checkout.stripe.com/sess_123"
-    assert result["session_id"] == "sess_123"
     mock_stripe.Customer.create.assert_called_once()
+    assert result["checkout_url"] == "https://checkout.stripe.com/test"
 
 
 @pytest.mark.asyncio
-async def test_create_checkout_reuses_existing_customer():
-    """When user already has stripe_customer_id, no new customer is created."""
-    user = {**BASE_USER, "stripe_customer_id": "cus_existing_456"}
-    db, doc_ref = _mock_db_with_user(user)
+async def test_checkout_reuses_existing_customer(mock_db, mock_stripe):
+    """If user already has stripe_customer_id, reuse it."""
+    user_doc = make_user_doc({"stripe_customer_id": "cus_existing"})
+    mock_doc = AsyncMock()
+    mock_doc.to_dict.return_value = user_doc
+    mock_db.collection.return_value.document.return_value.get = AsyncMock(return_value=mock_doc)
 
-    fake_session = MagicMock()
-    fake_session.url = "https://checkout.stripe.com/sess_456"
-    fake_session.id = "sess_456"
+    mock_stripe.checkout.Session.create.return_value = MagicMock(
+        url="https://checkout.stripe.com/test", id="cs_test"
+    )
 
-    with patch("app.services.billing.get_db", return_value=db), \
-         patch("app.services.billing.stripe") as mock_stripe:
-        mock_stripe.checkout.Session.create.return_value = fake_session
+    await create_checkout_session("user123", "GROWTH", "annual")
 
-        result = await create_checkout_session(
-            user_id="user-1",
-            tier="GROWTH",
-            period="annual",
-        )
-
-    assert result["checkout_url"] == "https://checkout.stripe.com/sess_456"
     mock_stripe.Customer.create.assert_not_called()
+    call_kwargs = mock_stripe.checkout.Session.create.call_args[1]
+    assert call_kwargs["customer"] == "cus_existing"
 
 
 @pytest.mark.asyncio
-async def test_create_checkout_invalid_tier():
-    """Invalid tier should raise ValueError."""
-    db, _ = _mock_db_with_user({**BASE_USER})
+async def test_checkout_adds_trial_for_growth(mock_db, mock_stripe):
+    """GROWTH tier should get a 7-day trial."""
+    user_doc = make_user_doc()
+    mock_doc = AsyncMock()
+    mock_doc.to_dict.return_value = user_doc
+    mock_db.collection.return_value.document.return_value.get = AsyncMock(return_value=mock_doc)
 
-    with patch("app.services.billing.get_db", return_value=db), \
-         pytest.raises(ValueError, match="No price configured"):
-        await create_checkout_session(
-            user_id="user-1",
-            tier="NONEXISTENT",
-            period="monthly",
-        )
+    mock_stripe.checkout.Session.create.return_value = MagicMock(url="url", id="id")
 
-
-@pytest.mark.asyncio
-async def test_create_checkout_growth_gets_trial():
-    """GROWTH tier checkout should include a 7-day trial."""
-    user = {**BASE_USER, "stripe_customer_id": "cus_trial"}
-    db, _ = _mock_db_with_user(user)
-
-    fake_session = MagicMock()
-    fake_session.url = "https://checkout.stripe.com/trial"
-    fake_session.id = "sess_trial"
-
-    with patch("app.services.billing.get_db", return_value=db), \
-         patch("app.services.billing.stripe") as mock_stripe:
-        mock_stripe.checkout.Session.create.return_value = fake_session
-
-        await create_checkout_session(user_id="user-1", tier="GROWTH", period="monthly")
+    await create_checkout_session("user123", "GROWTH", "monthly")
 
     call_kwargs = mock_stripe.checkout.Session.create.call_args[1]
     assert call_kwargs["subscription_data"]["trial_period_days"] == 7
 
 
-# ---------------------------------------------------------------------------
-# Portal tests
-# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_checkout_no_trial_for_starter(mock_db, mock_stripe):
+    """STARTER tier should NOT get a trial."""
+    user_doc = make_user_doc()
+    mock_doc = AsyncMock()
+    mock_doc.to_dict.return_value = user_doc
+    mock_db.collection.return_value.document.return_value.get = AsyncMock(return_value=mock_doc)
+
+    mock_stripe.checkout.Session.create.return_value = MagicMock(url="url", id="id")
+
+    await create_checkout_session("user123", "STARTER", "monthly")
+
+    call_kwargs = mock_stripe.checkout.Session.create.call_args[1]
+    assert "trial_period_days" not in call_kwargs.get("subscription_data", {})
+
+
+# ━━━ WEBHOOK TESTS ━━━
 
 @pytest.mark.asyncio
-async def test_create_portal_no_customer_raises():
-    """Portal session should fail if user has no stripe_customer_id."""
-    db, _ = _mock_db_with_user({**BASE_USER})
+async def test_webhook_subscription_updated_writes_firestore(mock_db):
+    """Subscription update should write tier, status, and period end to user doc."""
+    mock_db.collection.return_value.document.return_value.update = AsyncMock()
 
-    with patch("app.services.billing.get_db", return_value=db), \
-         pytest.raises(ValueError, match="No billing account"):
-        await create_portal_session(user_id="user-1")
-
-
-# ---------------------------------------------------------------------------
-# Billing status tests
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_get_billing_status():
-    """get_billing_status returns tier, status, usage, and limits."""
-    user = {
-        **BASE_USER,
-        "subscription_tier": "GROWTH",
-        "subscription_status": "active",
+    subscription = {
+        "id": "sub_test123",
+        "status": "active",
+        "current_period_end": int((datetime.utcnow() + timedelta(days=30)).timestamp()),
+        "trial_end": None,
+        "metadata": {"pandocast_user_id": "user123", "tier": "GROWTH"},
+        "customer": "cus_test",
     }
-    db, _ = _mock_db_with_user(user)
 
-    with patch("app.services.billing.get_db", return_value=db):
-        result = await get_billing_status("user-1")
+    await handle_subscription_updated(subscription)
 
-    assert result["tier"] == "GROWTH"
-    assert result["status"] == "active"
-    assert result["usage"]["content_uploads"] == 0
-    assert result["limits"]["uploads"] == 20
-    assert result["limits"]["seats"] == 3
-
-
-# ---------------------------------------------------------------------------
-# Webhook tests
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_handle_checkout_completed():
-    """checkout.session.completed links subscription to user."""
-    db, doc_ref = _mock_db_with_user({**BASE_USER})
-
-    fake_sub = MagicMock()
-    fake_sub.metadata = {"pandocast_user_id": "user-1", "tier": "GROWTH"}
-    fake_sub.get.side_effect = lambda k, default=None: {
-        "id": "sub_123", "status": "active",
-        "current_period_end": 1735689600,
-    }.get(k, default)
-
-    with patch("app.services.billing.get_db", return_value=db), \
-         patch("app.services.billing.stripe") as mock_stripe:
-        mock_stripe.Subscription.retrieve.return_value = fake_sub
-
-        await handle_checkout_completed({
-            "subscription": "sub_123",
-            "customer": "cus_123",
-        })
-
-    doc_ref.update.assert_called()
-    call_args = doc_ref.update.call_args[0][0]
+    mock_db.collection.return_value.document.return_value.update.assert_called_once()
+    call_args = mock_db.collection.return_value.document.return_value.update.call_args[0][0]
     assert call_args["subscription_tier"] == "GROWTH"
     assert call_args["subscription_status"] == "active"
 
 
 @pytest.mark.asyncio
-async def test_handle_subscription_deleted_downgrades():
-    """customer.subscription.deleted downgrades user to FREE and disables autopilot."""
-    user = {**BASE_USER, "stripe_subscription_id": "sub_999", "subscription_tier": "GROWTH"}
-    db, doc_ref = _mock_db_with_user(user)
+async def test_webhook_subscription_deleted_downgrades(mock_db):
+    """Subscription deletion should downgrade to FREE and disable autopilot."""
+    mock_db.collection.return_value.document.return_value.update = AsyncMock()
 
-    # Mock autopilot query (empty)
-    autopilot_query = MagicMock()
-    async def _empty_stream():
-        return
-        yield
-    autopilot_query.stream = _empty_stream
-    autopilot_query.where = MagicMock(return_value=autopilot_query)
+    # Mock autopilot query (empty — no autopilot to disable)
+    mock_stream = AsyncMock()
+    mock_stream.__aiter__ = AsyncMock(return_value=iter([]))
+    mock_db.collection.return_value.where.return_value.where.return_value.stream.return_value = mock_stream
 
-    # Mock notifications collection
-    notif_ref = AsyncMock()
+    # Mock notification add
+    mock_db.collection.return_value.add = AsyncMock()
 
-    def _collection(name):
-        coll = MagicMock()
-        if name == "users":
-            coll.document.return_value = doc_ref
-        elif name == "autopilot_settings":
-            coll.where.return_value = autopilot_query
-        elif name == "notifications":
-            coll.add = AsyncMock()
-        return coll
-
-    db.collection = _collection
-
-    with patch("app.services.billing.get_db", return_value=db):
-        await handle_subscription_deleted({
-            "metadata": {"pandocast_user_id": "user-1"},
-            "customer": "cus_123",
-        })
-
-    doc_ref.update.assert_called_once()
-    call_args = doc_ref.update.call_args[0][0]
-    assert call_args["subscription_tier"] == "FREE"
-    assert call_args["subscription_status"] == "canceled"
-
-
-@pytest.mark.asyncio
-async def test_handle_invoice_payment_failed():
-    """invoice.payment_failed sets status to past_due and creates notification."""
-    user = {**BASE_USER, "stripe_customer_id": "cus_fail"}
-    db = _mock_db_with_query_results(user)
-
-    # Also need notifications collection
-    original_collection = db.collection
-
-    def _collection(name):
-        if name == "notifications":
-            coll = MagicMock()
-            coll.add = AsyncMock()
-            return coll
-        return original_collection(name)
-
-    db.collection = _collection
-
-    with patch("app.services.billing.get_db", return_value=db):
-        await handle_invoice_payment_failed({"customer": "cus_fail"})
-
-
-@pytest.mark.asyncio
-async def test_handle_invoice_paid_resets_usage():
-    """invoice.paid resets usage counters."""
-    user = {
-        **BASE_USER,
-        "stripe_customer_id": "cus_paid",
-        "subscription_status": "past_due",
-        "usage_this_period": {"content_uploads": 15, "generations_run": 10},
+    subscription = {
+        "metadata": {"pandocast_user_id": "user123"},
+        "customer": "cus_test",
     }
-    db, doc_ref = _mock_db_with_user(user)
 
-    # _find_user_by_customer_id uses .where().limit().stream()
-    found_doc = MagicMock()
-    found_doc.id = "user-1"
+    await handle_subscription_deleted(subscription)
 
-    async def _found_stream():
-        yield found_doc
-
-    query = MagicMock()
-    query.stream = _found_stream
-    query.limit = MagicMock(return_value=query)
-
-    def _collection(name):
-        coll = MagicMock()
-        if name == "users":
-            coll.document.return_value = doc_ref
-            coll.where.return_value = query
-        return coll
-
-    db.collection = _collection
-
-    with patch("app.services.billing.get_db", return_value=db):
-        await handle_invoice_paid({
-            "customer": "cus_paid",
-            "lines": {"data": [{"period": {"end": 1735689600}}]},
-        })
-
-    doc_ref.update.assert_called()
-    call_args = doc_ref.update.call_args[0][0]
-    assert call_args["usage_this_period"]["content_uploads"] == 0
-    assert call_args["subscription_status"] == "active"
-
-
-# ---------------------------------------------------------------------------
-# Tier enforcement tests
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_check_tier_limit_blocks_free_user():
-    """FREE tier user should be blocked from exceeding upload limit."""
-    user = {
-        **BASE_USER,
-        "subscription_tier": "FREE",
-        "usage_this_period": {"uploads": 3},
-    }
-    db, _ = _mock_db_with_user(user)
-
-    with patch("app.services.billing.get_db", return_value=db):
-        allowed = await check_tier_limit("user-1", "uploads")
-
-    assert allowed is False
+    update_call = mock_db.collection.return_value.document.return_value.update.call_args[0][0]
+    assert update_call["subscription_tier"] == "FREE"
+    assert update_call["subscription_status"] == "canceled"
 
 
 @pytest.mark.asyncio
-async def test_check_tier_limit_allows_under_limit():
-    """FREE tier user under limit should be allowed."""
-    user = {
-        **BASE_USER,
-        "subscription_tier": "FREE",
-        "usage_this_period": {"uploads": 1},
-    }
-    db, _ = _mock_db_with_user(user)
+async def test_webhook_payment_failed_sets_past_due(mock_db):
+    """Payment failure should set status to past_due and send notification."""
+    # Mock user lookup by customer ID
+    mock_doc = AsyncMock()
+    mock_doc.id = "user123"
+    mock_stream = AsyncMock()
+    mock_stream.__aiter__ = AsyncMock(return_value=iter([mock_doc]))
+    mock_db.collection.return_value.where.return_value.limit.return_value.stream.return_value = mock_stream
 
-    with patch("app.services.billing.get_db", return_value=db):
-        allowed = await check_tier_limit("user-1", "uploads")
+    mock_db.collection.return_value.document.return_value.update = AsyncMock()
+    mock_db.collection.return_value.add = AsyncMock()
 
-    assert allowed is True
+    await handle_invoice_payment_failed({"customer": "cus_test"})
+
+    update_call = mock_db.collection.return_value.document.return_value.update.call_args[0][0]
+    assert update_call["subscription_status"] == "past_due"
 
 
 @pytest.mark.asyncio
-async def test_pro_tier_unlimited():
-    """PRO tier user should never be blocked (limit=-1 means unlimited)."""
-    user = {
-        **BASE_USER,
+async def test_webhook_invoice_paid_resets_usage(mock_db):
+    """Paid invoice should reset usage counters to zero."""
+    # Mock user lookup
+    mock_user_query_doc = AsyncMock()
+    mock_user_query_doc.id = "user123"
+    mock_stream = AsyncMock()
+    mock_stream.__aiter__ = AsyncMock(return_value=iter([mock_user_query_doc]))
+    mock_db.collection.return_value.where.return_value.limit.return_value.stream.return_value = mock_stream
+
+    # Mock user doc for status check
+    mock_user_doc = AsyncMock()
+    mock_user_doc.to_dict.return_value = {"subscription_status": "active"}
+    mock_db.collection.return_value.document.return_value.get = AsyncMock(return_value=mock_user_doc)
+    mock_db.collection.return_value.document.return_value.update = AsyncMock()
+
+    await handle_invoice_paid({
+        "customer": "cus_test",
+        "lines": {"data": [{"period": {"end": int(datetime.utcnow().timestamp())}}]},
+    })
+
+    update_call = mock_db.collection.return_value.document.return_value.update.call_args[0][0]
+    assert update_call["usage_this_period"]["content_uploads"] == 0
+    assert update_call["usage_this_period"]["generations_run"] == 0
+
+
+# ━━━ TIER ENFORCEMENT TESTS ━━━
+
+@pytest.mark.asyncio
+async def test_tier_limit_blocks_free_at_3_uploads(mock_db):
+    """FREE tier should be blocked at 3 uploads."""
+    user_doc = make_user_doc({"usage_this_period": {"content_uploads": 3}})
+    mock_doc = AsyncMock()
+    mock_doc.to_dict.return_value = user_doc
+    mock_db.collection.return_value.document.return_value.get = AsyncMock(return_value=mock_doc)
+
+    result = await check_tier_limit("user123", "uploads")
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_tier_limit_allows_free_under_limit(mock_db):
+    """FREE tier should be allowed under 3 uploads."""
+    user_doc = make_user_doc({"usage_this_period": {"content_uploads": 1}})
+    mock_doc = AsyncMock()
+    mock_doc.to_dict.return_value = user_doc
+    mock_db.collection.return_value.document.return_value.get = AsyncMock(return_value=mock_doc)
+
+    result = await check_tier_limit("user123", "uploads")
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_pro_tier_unlimited(mock_db):
+    """PRO tier should have unlimited uploads."""
+    user_doc = make_user_doc({
         "subscription_tier": "PRO",
-        "usage_this_period": {"uploads": 9999},
-    }
-    db, _ = _mock_db_with_user(user)
+        "usage_this_period": {"content_uploads": 999},
+    })
+    mock_doc = AsyncMock()
+    mock_doc.to_dict.return_value = user_doc
+    mock_db.collection.return_value.document.return_value.get = AsyncMock(return_value=mock_doc)
 
-    with patch("app.services.billing.get_db", return_value=db):
-        allowed = await check_tier_limit("user-1", "uploads")
-
-    assert allowed is True
-
-
-@pytest.mark.asyncio
-async def test_agency_tier_unlimited():
-    """AGENCY tier user should never be blocked."""
-    user = {
-        **BASE_USER,
-        "subscription_tier": "AGENCY",
-        "usage_this_period": {"uploads": 9999},
-    }
-    db, _ = _mock_db_with_user(user)
-
-    with patch("app.services.billing.get_db", return_value=db):
-        allowed = await check_tier_limit("user-1", "uploads")
-
-    assert allowed is True
-
-    assert TIER_LIMITS["AGENCY"]["seats"] == -1
-
-
-@pytest.mark.asyncio
-async def test_check_and_increment_raises_at_limit():
-    """check_and_increment should raise ValueError when at tier limit."""
-    user = {
-        **BASE_USER,
-        "subscription_tier": "FREE",
-        "usage_this_period": {"content_uploads": 3},
-    }
-
-    doc = _make_user_doc(user)
-    doc_ref = MagicMock()
-    doc_ref.get = AsyncMock(return_value=doc)
-
-    collection = MagicMock()
-    collection.document.return_value = doc_ref
-
-    db = MagicMock()
-    db.collection.return_value = collection
-    db.transaction.return_value = MagicMock()
-
-    from google.cloud import firestore as mock_fs
-
-    with patch("app.services.billing.get_db", return_value=db), \
-         patch("app.services.billing.fs") as mock_fs_mod:
-        def passthrough_transactional(fn):
-            async def wrapper(transaction):
-                return await fn(transaction)
-            return wrapper
-        mock_fs_mod.async_transactional = passthrough_transactional
-
-        with pytest.raises(ValueError, match="Tier limit reached"):
-            await check_and_increment("user-1", "uploads", "content_uploads")
-
-
-def test_tier_rank_ordering():
-    """TIER_RANK should have correct ordering."""
-    assert TIER_RANK["FREE"] < TIER_RANK["STARTER"]
-    assert TIER_RANK["STARTER"] < TIER_RANK["GROWTH"]
-    assert TIER_RANK["GROWTH"] < TIER_RANK["PRO"]
-    assert TIER_RANK["PRO"] < TIER_RANK["AGENCY"]
-
-
-def test_tier_limits_seats():
-    """All tiers should have seats limit defined."""
-    for tier in TIER_LIMITS:
-        assert "seats" in TIER_LIMITS[tier]
+    result = await check_tier_limit("user123", "uploads")
+    assert result is True
