@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { Bell, User, Settings, LogOut } from 'lucide-react';
+import { User, Settings, LogOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Avatar } from '@/components/ui/avatar';
 import {
@@ -12,6 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { NotificationsDropdown } from '@/components/layout/notifications-dropdown';
 import { useAuthStore } from '@/stores/auth-store';
 import { ROUTES } from '@/lib/constants';
 
@@ -37,19 +38,7 @@ function Topbar({ sidebarCollapsed }: TopbarProps) {
       )}
     >
       {/* Notification Bell */}
-      <button
-        className={cn(
-          'relative rounded-lg p-2 text-cme-text-muted',
-          'hover:bg-cme-surface-hover hover:text-cme-text transition-colors duration-200',
-          'focus-ring'
-        )}
-        aria-label="Notifications"
-        title="Notifications"
-      >
-        <Bell className="h-5 w-5" />
-        {/* Notification dot */}
-        <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-cme-primary" />
-      </button>
+      <NotificationsDropdown />
 
       {/* User Dropdown */}
       <DropdownMenu>

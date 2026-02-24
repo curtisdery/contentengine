@@ -112,6 +112,13 @@ export {
   panicStop,
 } from "./api/autopilot.js";
 
+// ─── API: Notifications (3 onCall) ──────────────────────────────────────────
+export {
+  listNotifications,
+  markNotificationRead,
+  markAllNotificationsRead,
+} from "./api/notifications.js";
+
 // ─── API: GDPR (2 onCall) ───────────────────────────────────────────────────
 export {
   exportData,
