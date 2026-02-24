@@ -10,6 +10,30 @@ export const metadata: Metadata = {
   title: 'Pandocast — Upload once. Pando everywhere.',
   description:
     'Pandocast analyzes your content\'s DNA, preserves your brand voice, and generates 18 platform-native formats — so one upload becomes your entire content calendar.',
+  metadataBase: new URL('https://pandocast.ai'),
+  openGraph: {
+    title: 'Pandocast — Upload once. Pando everywhere.',
+    description:
+      'One upload becomes 18 platform-native posts — all in your voice, ready to publish.',
+    url: 'https://pandocast.ai',
+    siteName: 'Pandocast',
+    type: 'website',
+    locale: 'en_US',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Pandocast — Upload once. Pando everywhere.',
+    description:
+      'One upload becomes 18 platform-native posts — all in your voice, ready to publish.',
+    site: '@pandocast',
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
+  alternates: {
+    canonical: 'https://pandocast.ai',
+  },
   icons: {
     icon: '/favicon.ico',
   },

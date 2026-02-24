@@ -76,25 +76,22 @@ function useInView(threshold = 0.15) {
 export default function LandingPage() {
   const router = useRouter();
   const { isAuthenticated, isLoading, initialize } = useAuthStore();
-  const [ready, setReady] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   // Initialize auth and redirect if logged in
   useEffect(() => {
+    setMounted(true);
     initialize();
   }, [initialize]);
 
   useEffect(() => {
-    if (!isLoading) {
-      if (isAuthenticated) {
-        router.replace(ROUTES.DASHBOARD);
-      } else {
-        setReady(true);
-      }
+    if (mounted && !isLoading && isAuthenticated) {
+      router.replace(ROUTES.DASHBOARD);
     }
-  }, [isAuthenticated, isLoading, router]);
+  }, [mounted, isAuthenticated, isLoading, router]);
 
-  // Show nothing while checking auth
-  if (!ready) {
+  // After hydration: show spinner while checking auth or redirecting
+  if (mounted && (isLoading || isAuthenticated)) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-cme-bg">
         <div className="gradient-text text-4xl font-bold tracking-wider animate-pulse">
@@ -104,6 +101,7 @@ export default function LandingPage() {
     );
   }
 
+  // Full page renders for SSR (crawlers) and non-authenticated users
   return (
     <main className="relative min-h-screen overflow-x-hidden bg-cme-bg">
       {/* Floating nav */}
@@ -1051,10 +1049,10 @@ function Footer() {
 
         {/* Links */}
         <div className="flex items-center gap-6 text-sm text-cme-text-muted">
-          <a href="#" className="transition-colors hover:text-cme-text">
+          <a href="/privacy" className="transition-colors hover:text-cme-text">
             Privacy
           </a>
-          <a href="#" className="transition-colors hover:text-cme-text">
+          <a href="/terms" className="transition-colors hover:text-cme-text">
             Terms
           </a>
           <a
