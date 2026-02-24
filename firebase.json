@@ -1,10 +1,4 @@
 {
-  "hosting": {
-    "source": "apps/web",
-    "frameworksBackend": {
-      "region": "us-central1"
-    }
-  },
   "functions": [
     {
       "source": "functions",
@@ -29,9 +23,6 @@
     "rules": "storage.rules"
   },
   "emulators": {
-    "hosting": {
-      "port": 5000
-    },
     "functions": {
       "port": 5001
     },

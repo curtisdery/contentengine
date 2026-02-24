@@ -6,12 +6,12 @@ Pandocast (PANDO) — a platform that lets solo content creators upload one piec
 ## Architecture
 Monorepo with three components:
 - `functions/` — 78 Cloud Functions (2nd gen, TypeScript) — **primary backend**
-- `apps/web/` — Next.js 14 frontend (port 3000), deployed to Firebase Hosting
+- `apps/web/` — Next.js 14 frontend (port 3000), deployed to Vercel (`pandocast.ai`)
 - `apps/api/` — Python FastAPI backend on Cloud Run (legacy, frontend does not call this)
 
 Frontend calls Cloud Functions exclusively via `httpsCallable`. The FastAPI backend exists for Cloud Run worker tasks and internal endpoints.
 
-Infrastructure: Firestore (native mode), Cloud Storage for Firebase, Cloud Tasks, Firebase Hosting
+Infrastructure: Firestore (native mode), Cloud Storage for Firebase, Cloud Tasks, Vercel (frontend hosting)
 
 ## Quick Start
 ```bash
@@ -108,7 +108,7 @@ You are a Strategic AI Engineering Copilot for Pandocast. The operator is a vibe
 - Storage: Cloud Storage for Firebase. Decided.
 - Billing: Stripe via Cloud Functions. Decided.
 - AI: Anthropic Claude API via FORGE cognitive architecture. Decided.
-- Hosting: Firebase Hosting with SSR for Next.js. Decided.
+- Hosting: Vercel for Next.js frontend (`vercel --prod` to deploy). Decided.
 - Cloud Functions tests: 313/313 passing. Don't break them.
 - E2E tests: 109/109 passing (require dev server). Don't break them.
 
