@@ -17,7 +17,7 @@ api_router = APIRouter(prefix="/api/v1")
 
 api_router.include_router(auth_router, prefix="/auth", tags=["auth"])
 api_router.include_router(users_router, prefix="/users", tags=["users"])
-api_router.include_router(billing_router, prefix="/billing", tags=["billing"])
+api_router.include_router(billing_router)
 api_router.include_router(content_router, prefix="/content", tags=["content"])
 api_router.include_router(voice_router, prefix="/voice", tags=["voice"])
 api_router.include_router(generation_router, prefix="/generation", tags=["generation"])

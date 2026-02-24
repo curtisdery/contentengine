@@ -407,7 +407,7 @@ async def test_refresh_marks_inactive_on_failure():
 @pytest.mark.asyncio
 async def test_tier_limits_platform_count():
     """FREE tier should be limited to 2 platforms, PRO should be unlimited."""
-    from app.services.billing import TIER_LIMITS, check_usage_limit
+    from app.services.billing import TIER_LIMITS, check_tier_limit
 
     # Verify tier config
     assert TIER_LIMITS["FREE"]["platforms"] == 2
@@ -429,7 +429,7 @@ async def test_tier_limits_platform_count():
     db.collection.return_value = collection
 
     with patch("app.services.billing.get_db", return_value=db):
-        allowed = await check_usage_limit("user_1", "platforms")
+        allowed = await check_tier_limit("user_1", "platforms")
     assert allowed is False
 
     # PRO user — always allowed
@@ -446,5 +446,5 @@ async def test_tier_limits_platform_count():
     db_pro.collection.return_value = collection_pro
 
     with patch("app.services.billing.get_db", return_value=db_pro):
-        allowed = await check_usage_limit("user_2", "platforms")
+        allowed = await check_tier_limit("user_2", "platforms")
     assert allowed is True
