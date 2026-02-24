@@ -93,6 +93,7 @@ BASE_USER = {
     "stripe_customer_id": None,
     "stripe_subscription_id": None,
     "current_period_end": None,
+    "trial_ends_at": None,
     "usage_this_period": {
         "content_uploads": 0,
         "generations_run": 0,
@@ -115,6 +116,7 @@ async def test_create_checkout_creates_stripe_customer():
     fake_customer.id = "cus_new_123"
     fake_session = MagicMock()
     fake_session.url = "https://checkout.stripe.com/sess_123"
+    fake_session.id = "sess_123"
 
     with patch("app.services.billing.get_db", return_value=db), \
          patch("app.services.billing.stripe") as mock_stripe:
@@ -124,12 +126,12 @@ async def test_create_checkout_creates_stripe_customer():
         result = await create_checkout_session(
             user_id="user_1",
             user_email="test@example.com",
-            tier="growth",
-            success_url="https://app.test/success",
-            cancel_url="https://app.test/cancel",
+            tier="GROWTH",
+            period="monthly",
         )
 
     assert result["checkout_url"] == "https://checkout.stripe.com/sess_123"
+    assert result["session_id"] == "sess_123"
     mock_stripe.Customer.create.assert_called_once()
 
 
@@ -141,6 +143,7 @@ async def test_create_checkout_reuses_existing_customer():
 
     fake_session = MagicMock()
     fake_session.url = "https://checkout.stripe.com/sess_456"
+    fake_session.id = "sess_456"
 
     with patch("app.services.billing.get_db", return_value=db), \
          patch("app.services.billing.stripe") as mock_stripe:
@@ -149,13 +152,27 @@ async def test_create_checkout_reuses_existing_customer():
         result = await create_checkout_session(
             user_id="user_1",
             user_email="test@example.com",
-            tier="growth",
-            success_url="https://app.test/success",
-            cancel_url="https://app.test/cancel",
+            tier="GROWTH",
+            period="annual",
         )
 
     assert result["checkout_url"] == "https://checkout.stripe.com/sess_456"
     mock_stripe.Customer.create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_create_checkout_invalid_tier():
+    """Invalid tier should raise ValidationError."""
+    db, _ = _mock_db_with_user({**BASE_USER})
+
+    with patch("app.services.billing.get_db", return_value=db), \
+         pytest.raises(ValidationError):
+        await create_checkout_session(
+            user_id="user_1",
+            user_email="test@example.com",
+            tier="NONEXISTENT",
+            period="monthly",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -173,7 +190,7 @@ async def test_webhook_subscription_created_updates_firestore():
             "object": {
                 "customer": "cus_123",
                 "subscription": "sub_123",
-                "metadata": {"user_id": "user_1", "tier": "GROWTH"},
+                "metadata": {"user_id": "user_1", "tier": "GROWTH", "period": "monthly"},
             }
         },
     }
@@ -189,6 +206,7 @@ async def test_webhook_subscription_created_updates_firestore():
     assert call_args["subscription_tier"] == "GROWTH"
     assert call_args["subscription_status"] == "active"
     assert call_args["stripe_subscription_id"] == "sub_123"
+    assert call_args["billing_period"] == "monthly"
 
 
 @pytest.mark.asyncio
@@ -209,11 +227,6 @@ async def test_webhook_subscription_deleted_downgrades_to_free():
         mock_stripe.Webhook.construct_event.return_value = event
 
         await handle_webhook(payload=b"raw", sig_header="sig_123")
-
-    # Verify the query-found doc was updated
-    # The mock stream yields a doc whose reference.update is an AsyncMock
-    # We check it was called with FREE tier
-    # (stream is consumed internally, so we verify via the mock setup)
 
 
 @pytest.mark.asyncio
@@ -237,8 +250,8 @@ async def test_webhook_payment_failed_sets_past_due():
 
 
 @pytest.mark.asyncio
-async def test_webhook_invoice_paid_resets_usage():
-    """invoice.paid webhook resets usage counters (via subscription_updated status=active)."""
+async def test_webhook_subscription_updated():
+    """customer.subscription.updated webhook updates status and period end."""
     user = {
         **BASE_USER,
         "stripe_subscription_id": "sub_paid",
@@ -343,3 +356,42 @@ async def test_pro_tier_has_no_limit():
     assert TIER_LIMITS["PRO"]["uploads"] == -1
     assert TIER_LIMITS["PRO"]["platforms"] == -1
     assert TIER_LIMITS["PRO"]["voice_profiles"] == -1
+
+
+@pytest.mark.asyncio
+async def test_agency_tier_has_no_limit():
+    """AGENCY tier user should never be blocked (limit=-1 means unlimited)."""
+    user = {
+        **BASE_USER,
+        "subscription_tier": "AGENCY",
+        "usage_this_period": {"content_uploads": 9999},
+    }
+    db, _ = _mock_db_with_user(user)
+
+    with patch("app.services.billing.get_db", return_value=db):
+        allowed = await check_usage_limit("user_1", "content_uploads")
+
+    assert allowed is True
+
+    assert TIER_LIMITS["AGENCY"]["uploads"] == -1
+    assert TIER_LIMITS["AGENCY"]["platforms"] == -1
+
+
+@pytest.mark.asyncio
+async def test_get_subscription_returns_status():
+    """get_subscription returns tier, status, usage, and limits."""
+    user = {
+        **BASE_USER,
+        "subscription_tier": "GROWTH",
+        "subscription_status": "active",
+    }
+    db, _ = _mock_db_with_user(user)
+
+    with patch("app.services.billing.get_db", return_value=db):
+        result = await get_subscription("user_1")
+
+    assert result["tier"] == "GROWTH"
+    assert result["status"] == "active"
+    assert "usage" in result
+    assert "limits" in result
+    assert result["limits"]["uploads"] == 20

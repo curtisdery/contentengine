@@ -14,11 +14,7 @@ TIER_LIMITS = {
     "STARTER": {"uploads": 10, "formats": 8,  "platforms": 3,  "voice_profiles": 1},
     "GROWTH":  {"uploads": 20, "formats": 18, "platforms": 5,  "voice_profiles": 3},
     "PRO":     {"uploads": -1, "formats": 18, "platforms": -1, "voice_profiles": -1},
-}
-
-TIER_PRICE_MAP = {
-    "growth": settings.STRIPE_PRICE_GROWTH,
-    "pro": settings.STRIPE_PRICE_PRO,
+    "AGENCY":  {"uploads": -1, "formats": 18, "platforms": -1, "voice_profiles": -1},
 }
 
 
@@ -83,14 +79,22 @@ async def increment_usage(user_id: str, limit_key: str) -> None:
 
 
 async def create_checkout_session(
-    user_id: str, user_email: str, tier: str, success_url: str, cancel_url: str
+    user_id: str, user_email: str, tier: str, period: str = "monthly",
 ) -> dict:
     """Create a Stripe checkout session for subscription upgrade."""
-    price_id = TIER_PRICE_MAP.get(tier)
-    if not price_id:
+    tier_upper = tier.upper()
+    tier_prices = settings.STRIPE_PRICE_IDS.get(tier_upper)
+    if not tier_prices:
         raise ValidationError(
             message="Invalid tier",
             detail=f"Tier '{tier}' is not available for checkout",
+        )
+
+    price_id = tier_prices.get(period)
+    if not price_id:
+        raise ValidationError(
+            message="Invalid billing period",
+            detail=f"Period '{period}' is not available for tier '{tier}'",
         )
 
     customer_id = await _get_or_create_stripe_customer(user_id, user_email)
@@ -100,12 +104,12 @@ async def create_checkout_session(
         payment_method_types=["card"],
         line_items=[{"price": price_id, "quantity": 1}],
         mode="subscription",
-        success_url=success_url,
-        cancel_url=cancel_url,
-        metadata={"user_id": user_id, "tier": tier},
+        success_url=f"{settings.FRONTEND_URL}/settings?checkout=success",
+        cancel_url=f"{settings.FRONTEND_URL}/settings?checkout=cancel",
+        metadata={"user_id": user_id, "tier": tier_upper, "period": period},
     )
 
-    return {"checkout_url": checkout_session.url}
+    return {"checkout_url": checkout_session.url, "session_id": checkout_session.id}
 
 
 async def create_portal_session(user_id: str) -> dict:
@@ -121,7 +125,7 @@ async def create_portal_session(user_id: str) -> dict:
 
     portal_session = stripe.billing_portal.Session.create(
         customer=data["stripe_customer_id"],
-        return_url=f"{settings.FRONTEND_URL}/settings/billing",
+        return_url=f"{settings.FRONTEND_URL}/settings",
     )
 
     return {"portal_url": portal_session.url}
@@ -132,15 +136,21 @@ async def get_subscription(user_id: str) -> dict:
     doc = await _get_user_doc(user_id)
     data = doc.to_dict()
 
+    tier = data.get("subscription_tier", "FREE")
+    usage = data.get("usage_this_period", {})
+
     return {
-        "user_id": user_id,
-        "tier": data.get("subscription_tier", "FREE"),
-        "status": data.get("subscription_status", "incomplete"),
-        "stripe_customer_id": data.get("stripe_customer_id"),
-        "stripe_subscription_id": data.get("stripe_subscription_id"),
+        "tier": tier,
+        "status": data.get("subscription_status", "active" if tier == "FREE" else "incomplete"),
+        "usage": {
+            "content_uploads": usage.get("content_uploads", 0),
+            "generations_run": usage.get("generations_run", 0),
+            "outputs_generated": usage.get("outputs_generated", 0),
+            "posts_published": usage.get("posts_published", 0),
+        },
+        "limits": get_tier_limits(tier),
         "current_period_end": data.get("current_period_end"),
-        "usage": data.get("usage_this_period", {}),
-        "limits": get_tier_limits(data.get("subscription_tier", "FREE")),
+        "trial_ends_at": data.get("trial_ends_at"),
     }
 
 
@@ -176,10 +186,10 @@ async def handle_webhook(payload: bytes, sig_header: str) -> None:
 async def _handle_checkout_completed(data: dict) -> None:
     """Handle successful checkout — activate subscription."""
     db = get_db()
-    customer_id = data.get("customer")
     subscription_id = data.get("subscription")
     metadata = data.get("metadata", {})
     tier = metadata.get("tier", "GROWTH").upper()
+    period = metadata.get("period", "monthly")
     user_id = metadata.get("user_id")
 
     if user_id:
@@ -187,6 +197,13 @@ async def _handle_checkout_completed(data: dict) -> None:
             "stripe_subscription_id": subscription_id,
             "subscription_tier": tier,
             "subscription_status": "active",
+            "billing_period": period,
+            "usage_this_period": {
+                "content_uploads": 0,
+                "generations_run": 0,
+                "outputs_generated": 0,
+                "posts_published": 0,
+            },
             "updated_at": datetime.utcnow(),
         })
 
@@ -195,14 +212,13 @@ async def _handle_subscription_updated(data: dict) -> None:
     """Handle subscription updates from Stripe."""
     db = get_db()
     stripe_sub_id = data.get("id")
-    status = data.get("status")
+    sub_status = data.get("status")
 
-    # Find user by stripe_subscription_id
     query = db.collection("users").where("stripe_subscription_id", "==", stripe_sub_id).limit(1)
     docs = [doc async for doc in query.stream()]
     if docs:
         updates = {
-            "subscription_status": status,
+            "subscription_status": sub_status,
             "updated_at": datetime.utcnow(),
         }
         period_end = data.get("current_period_end")

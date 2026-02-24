@@ -1,20 +1,18 @@
 from fastapi import APIRouter, Depends, Header, Request, status
-from pydantic import BaseModel
 
 from app.middleware.auth import get_current_user
+from app.schemas.billing import (
+    BillingStatusResponse,
+    CheckoutRequest,
+    CheckoutResponse,
+    PortalResponse,
+)
 from app.services import billing as billing_service
 
 router = APIRouter()
 
 
-class CheckoutRequest(BaseModel):
-    tier: str
-    period: str = "monthly"
-    success_url: str = ""
-    cancel_url: str = ""
-
-
-@router.post("/checkout")
+@router.post("/checkout", response_model=CheckoutResponse)
 async def create_checkout(
     body: CheckoutRequest,
     current_user=Depends(get_current_user),
@@ -23,13 +21,12 @@ async def create_checkout(
     return await billing_service.create_checkout_session(
         user_id=current_user.id,
         user_email=current_user.email,
-        tier=body.tier,
-        success_url=body.success_url,
-        cancel_url=body.cancel_url,
+        tier=body.tier.value,
+        period=body.period.value,
     )
 
 
-@router.post("/portal")
+@router.post("/portal", response_model=PortalResponse)
 async def create_portal(
     current_user=Depends(get_current_user),
 ) -> dict:
@@ -37,7 +34,7 @@ async def create_portal(
     return await billing_service.create_portal_session(user_id=current_user.id)
 
 
-@router.get("/status")
+@router.get("/status", response_model=BillingStatusResponse)
 async def get_status(
     current_user=Depends(get_current_user),
 ) -> dict:
