@@ -26,6 +26,9 @@ build/
 apps/web/.next/
 apps/web/out/
 
+# Cloud Functions compiled output
+functions/lib/
+
 # Python
 *.pyc
 .pytest_cache/
