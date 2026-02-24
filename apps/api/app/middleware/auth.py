@@ -1,15 +1,11 @@
 import re
+from datetime import datetime, timezone
 
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.database import get_db
-from app.models.user import User
-from app.models.organization import Organization, OrganizationMember, Workspace
-from app.models.subscription import Subscription
+from app.core.firestore import get_db
 from app.utils.exceptions import AuthenticationError
 from app.utils.firebase import verify_firebase_token
 
@@ -40,13 +36,32 @@ def _slugify(text: str) -> str:
     return slug
 
 
+class _UserProxy:
+    """Lightweight user object returned by get_current_user."""
+
+    def __init__(self, data: dict, doc_id: str):
+        self._data = data
+        self.id = doc_id
+        self.email = data.get("email", "")
+        self.full_name = data.get("full_name", "")
+        self.firebase_uid = data.get("firebase_uid", "")
+        self.avatar_url = data.get("avatar_url")
+        self.email_verified = data.get("email_verified", False)
+        self.is_active = data.get("is_active", True)
+        self.tier = data.get("tier", "starter")
+        self.fcm_token = data.get("fcm_token")
+        self.created_at = data.get("created_at")
+
+    def to_dict(self) -> dict:
+        return {**self._data, "id": self.id}
+
+
 async def get_current_user(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
-    db: AsyncSession = Depends(get_db),
-) -> User:
+) -> _UserProxy:
     """FastAPI dependency that verifies a Firebase ID token,
-    looks up (or auto-provisions) the user, and returns the User object.
+    looks up (or auto-provisions) the user, and returns a user proxy.
     """
     if credentials is None:
         raise AuthenticationError(
@@ -72,27 +87,31 @@ async def get_current_user(
         avatar_url = claims.get("picture")
         email_verified = claims.get("email_verified", False)
 
+    db = get_db()
+    now = datetime.now(timezone.utc)
+
     # 1. Look up by firebase_uid
-    result = await db.execute(
-        select(User).where(User.firebase_uid == firebase_uid)
-    )
-    user = result.scalar_one_or_none()
+    query = db.collection("users").where("firebase_uid", "==", firebase_uid).limit(1)
+    user_doc = None
+    async for doc in query.stream():
+        user_doc = doc
+        break
 
     # 2. If not found, check by email (link existing user)
-    if user is None and email:
-        result = await db.execute(
-            select(User).where(User.email == email)
-        )
-        user = result.scalar_one_or_none()
-        if user is not None:
-            # Link the existing user to their Firebase UID
-            user.firebase_uid = firebase_uid
-            if not user.email_verified and email_verified:
-                user.email_verified = True
-            await db.flush()
+    if user_doc is None and email:
+        query = db.collection("users").where("email", "==", email).limit(1)
+        async for doc in query.stream():
+            user_doc = doc
+            break
+        if user_doc is not None:
+            update_data = {"firebase_uid": firebase_uid}
+            user_data = user_doc.to_dict()
+            if not user_data.get("email_verified") and email_verified:
+                update_data["email_verified"] = True
+            await db.collection("users").document(user_doc.id).update(update_data)
 
     # 3. If still not found, auto-provision new user
-    if user is None:
+    if user_doc is None:
         if not email:
             raise AuthenticationError(
                 message="Email required",
@@ -101,55 +120,31 @@ async def get_current_user(
 
         full_name = display_name or email.split("@")[0]
 
-        user = User(
-            email=email,
-            firebase_uid=firebase_uid,
-            full_name=full_name,
-            avatar_url=avatar_url,
-            email_verified=email_verified,
-        )
-        db.add(user)
-        await db.flush()
+        user_ref = db.collection("users").document()
+        user_data = {
+            "email": email,
+            "firebase_uid": firebase_uid,
+            "full_name": full_name,
+            "avatar_url": avatar_url,
+            "email_verified": email_verified,
+            "is_active": True,
+            "tier": "starter",
+            "created_at": now,
+            "updated_at": now,
+        }
+        await user_ref.set(user_data)
 
-        # Create personal organization
-        org_slug = _slugify(full_name) + "-" + str(user.id)[:8]
-        organization = Organization(
-            name=f"{full_name}'s Organization",
-            slug=org_slug,
-            owner_id=user.id,
-        )
-        db.add(organization)
-        await db.flush()
+        user = _UserProxy(user_data, user_ref.id)
+        request.state.user_id = user.id
+        return user
 
-        org_member = OrganizationMember(
-            organization_id=organization.id,
-            user_id=user.id,
-            role="owner",
-        )
-        db.add(org_member)
-
-        workspace = Workspace(
-            organization_id=organization.id,
-            name="Default Workspace",
-            slug="default",
-        )
-        db.add(workspace)
-
-        subscription = Subscription(
-            organization_id=organization.id,
-            tier="starter",
-            status="trialing",
-        )
-        db.add(subscription)
-        await db.flush()
-
-    if not user.is_active:
+    data = user_doc.to_dict()
+    if not data.get("is_active", True):
         raise AuthenticationError(
             message="Account disabled",
             detail="This account has been disabled",
         )
 
-    # Store user on request state for logging middleware
-    request.state.user_id = str(user.id)
-
+    user = _UserProxy(data, user_doc.id)
+    request.state.user_id = user.id
     return user

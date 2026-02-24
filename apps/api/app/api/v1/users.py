@@ -1,32 +1,35 @@
-from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
+"""User profile API routes — Firestore-backed."""
 
-from app.database import get_db
+from fastapi import APIRouter, Depends
+
+from app.core.firestore import get_db
 from app.middleware.auth import get_current_user
-from app.models.user import User
-from app.schemas.auth import UserResponse
-from app.schemas.user import UserUpdateRequest
-from app.services import user as user_service
 
 router = APIRouter()
 
 
-@router.get("/me", response_model=UserResponse)
+@router.get("/me")
 async def get_current_user_profile(
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> UserResponse:
+    current_user=Depends(get_current_user),
+) -> dict:
     """Get the current authenticated user's profile."""
-    return await user_service.get_user_profile(db=db, user_id=current_user.id)
+    return current_user.to_dict()
 
 
-@router.patch("/me", response_model=UserResponse)
+@router.patch("/me")
 async def update_current_user_profile(
-    update_data: UserUpdateRequest,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> UserResponse:
+    update_data: dict,
+    current_user=Depends(get_current_user),
+) -> dict:
     """Update the current authenticated user's profile."""
-    return await user_service.update_user_profile(
-        db=db, user_id=current_user.id, update_data=update_data
-    )
+    db = get_db()
+    allowed_fields = {"full_name", "avatar_url", "bio", "timezone", "notification_preferences"}
+    updates = {k: v for k, v in update_data.items() if k in allowed_fields and v is not None}
+
+    if updates:
+        await db.collection("users").document(current_user.id).update(updates)
+
+    # Return updated user
+    doc = await db.collection("users").document(current_user.id).get()
+    data = doc.to_dict()
+    return {**data, "id": doc.id}

@@ -1,165 +1,139 @@
-"""Brand voice profile API routes."""
+"""Brand voice profile API routes — Firestore-backed."""
 
-from uuid import UUID
+from datetime import datetime, timezone
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_db
+from app.core.firestore import get_db
 from app.middleware.auth import get_current_user
-from app.models.organization import OrganizationMember, Workspace
-from app.models.user import User
-from app.schemas.brand_voice import (
-    VoiceProfileCreateRequest,
-    VoiceProfileResponse,
-    VoiceProfileUpdateRequest,
-    VoiceSampleAnalysisRequest,
-    VoiceSampleAnalysisResponse,
-)
-from app.services.brand_voice import BrandVoiceService
 from app.utils.exceptions import NotFoundError
 
-from sqlalchemy import select
-
 router = APIRouter()
-voice_service = BrandVoiceService()
 
 
-async def get_user_workspace(user: User, db: AsyncSession) -> Workspace:
-    """Get the user's default workspace (first org's first workspace)."""
-    result = await db.execute(
-        select(OrganizationMember)
-        .where(OrganizationMember.user_id == user.id)
-        .limit(1)
-    )
-    membership = result.scalar_one_or_none()
-    if not membership:
-        raise NotFoundError(
-            message="No organization found",
-            detail="User does not belong to any organization",
-        )
-
-    result = await db.execute(
-        select(Workspace)
-        .where(Workspace.organization_id == membership.organization_id)
-        .limit(1)
-    )
-    workspace = result.scalar_one_or_none()
-    if not workspace:
-        raise NotFoundError(
-            message="No workspace found",
-            detail="Organization does not have any workspaces",
-        )
-
-    return workspace
-
-
-@router.post(
-    "/profiles",
-    response_model=VoiceProfileResponse,
-    status_code=status.HTTP_201_CREATED,
-)
+@router.post("/profiles", status_code=status.HTTP_201_CREATED)
 async def create_voice_profile(
-    request_body: VoiceProfileCreateRequest,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> VoiceProfileResponse:
-    """Create a new voice profile for the workspace."""
-    workspace = await get_user_workspace(current_user, db)
+    request_body: dict,
+    current_user=Depends(get_current_user),
+) -> dict:
+    """Create a new voice profile."""
+    db = get_db()
+    now = datetime.now(timezone.utc)
+    doc_id = str(uuid4())
 
-    profile = await voice_service.create_profile(
-        db=db,
-        workspace_id=workspace.id,
-        user_id=current_user.id,
-        data=request_body.model_dump(),
-    )
+    profile_data = {
+        "user_id": current_user.id,
+        "name": request_body.get("name", ""),
+        "description": request_body.get("description", ""),
+        "tone_attributes": request_body.get("tone_attributes", []),
+        "vocabulary": request_body.get("vocabulary", {}),
+        "formatting": request_body.get("formatting", {}),
+        "sample_content": request_body.get("sample_content", []),
+        "tone_metrics": request_body.get("tone_metrics", {}),
+        "cta_library": request_body.get("cta_library", []),
+        "is_default": request_body.get("is_default", False),
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db.collection("voice_profiles").document(doc_id).set(profile_data)
 
-    return VoiceProfileResponse.model_validate(profile)
+    return {**profile_data, "id": doc_id}
 
 
-@router.get("/profiles", response_model=list[VoiceProfileResponse])
+@router.get("/profiles")
 async def list_voice_profiles(
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> list[VoiceProfileResponse]:
-    """List all voice profiles for the workspace."""
-    workspace = await get_user_workspace(current_user, db)
+    current_user=Depends(get_current_user),
+) -> list[dict]:
+    """List all voice profiles for the user."""
+    db = get_db()
+    query = db.collection("voice_profiles").where("user_id", "==", current_user.id)
 
-    profiles = await voice_service.get_profiles(db=db, workspace_id=workspace.id)
+    profiles = []
+    async for doc in query.stream():
+        profiles.append({**doc.to_dict(), "id": doc.id})
 
-    return [VoiceProfileResponse.model_validate(p) for p in profiles]
+    return profiles
 
 
-@router.get("/profiles/{profile_id}", response_model=VoiceProfileResponse)
+@router.get("/profiles/{profile_id}")
 async def get_voice_profile(
-    profile_id: UUID,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> VoiceProfileResponse:
+    profile_id: str,
+    current_user=Depends(get_current_user),
+) -> dict:
     """Get a single voice profile."""
-    workspace = await get_user_workspace(current_user, db)
+    db = get_db()
+    doc = await db.collection("voice_profiles").document(profile_id).get()
 
-    profile = await voice_service.get_profile(
-        db=db,
-        profile_id=profile_id,
-        workspace_id=workspace.id,
-    )
+    if not doc.exists:
+        raise NotFoundError(message="Voice profile not found", detail=f"No voice profile found with id {profile_id}")
 
-    return VoiceProfileResponse.model_validate(profile)
+    data = doc.to_dict()
+    if data.get("user_id") != current_user.id:
+        raise NotFoundError(message="Voice profile not found", detail=f"No voice profile found with id {profile_id}")
+
+    return {**data, "id": doc.id}
 
 
-@router.patch("/profiles/{profile_id}", response_model=VoiceProfileResponse)
+@router.patch("/profiles/{profile_id}")
 async def update_voice_profile(
-    profile_id: UUID,
-    request_body: VoiceProfileUpdateRequest,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> VoiceProfileResponse:
+    profile_id: str,
+    request_body: dict,
+    current_user=Depends(get_current_user),
+) -> dict:
     """Update an existing voice profile."""
-    workspace = await get_user_workspace(current_user, db)
+    db = get_db()
+    doc = await db.collection("voice_profiles").document(profile_id).get()
 
-    profile = await voice_service.update_profile(
-        db=db,
-        profile_id=profile_id,
-        workspace_id=workspace.id,
-        data=request_body.model_dump(exclude_none=True),
-    )
+    if not doc.exists:
+        raise NotFoundError(message="Voice profile not found", detail=f"No voice profile found with id {profile_id}")
 
-    return VoiceProfileResponse.model_validate(profile)
+    data = doc.to_dict()
+    if data.get("user_id") != current_user.id:
+        raise NotFoundError(message="Voice profile not found", detail=f"No voice profile found with id {profile_id}")
+
+    allowed_fields = {"name", "description", "tone_attributes", "vocabulary", "formatting",
+                      "sample_content", "tone_metrics", "cta_library", "is_default"}
+    updates = {k: v for k, v in request_body.items() if k in allowed_fields and v is not None}
+    if updates:
+        updates["updated_at"] = datetime.now(timezone.utc)
+        await db.collection("voice_profiles").document(profile_id).update(updates)
+        data.update(updates)
+
+    return {**data, "id": doc.id}
 
 
 @router.delete("/profiles/{profile_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_voice_profile(
-    profile_id: UUID,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    profile_id: str,
+    current_user=Depends(get_current_user),
 ) -> None:
     """Delete a voice profile."""
-    workspace = await get_user_workspace(current_user, db)
+    db = get_db()
+    doc = await db.collection("voice_profiles").document(profile_id).get()
 
-    await voice_service.delete_profile(
-        db=db,
-        profile_id=profile_id,
-        workspace_id=workspace.id,
-    )
+    if not doc.exists:
+        raise NotFoundError(message="Voice profile not found", detail=f"No voice profile found with id {profile_id}")
+
+    data = doc.to_dict()
+    if data.get("user_id") != current_user.id:
+        raise NotFoundError(message="Voice profile not found", detail=f"No voice profile found with id {profile_id}")
+
+    await db.collection("voice_profiles").document(profile_id).delete()
 
 
-@router.post("/analyze-samples", response_model=VoiceSampleAnalysisResponse)
+@router.post("/analyze-samples")
 async def analyze_voice_samples(
-    request_body: VoiceSampleAnalysisRequest,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> VoiceSampleAnalysisResponse:
-    """Analyze content samples and return voice characteristics without saving.
-
-    This endpoint is useful for previewing what voice analysis would detect
-    before creating or updating a profile.
-    """
-    analysis = await voice_service.analyze_samples(samples=request_body.samples)
-
-    return VoiceSampleAnalysisResponse(
-        tone_metrics=analysis.get("tone_metrics", {}),
-        vocabulary_patterns=analysis.get("vocabulary_patterns", {}),
-        signature_phrases=analysis.get("signature_phrases", []),
-        suggested_attributes=analysis.get("suggested_attributes", []),
-    )
+    request_body: dict,
+    current_user=Depends(get_current_user),
+) -> dict:
+    """Analyze content samples and return voice characteristics without saving."""
+    # Return placeholder analysis — actual AI analysis via FORGE
+    samples = request_body.get("samples", [])
+    return {
+        "tone_metrics": {},
+        "vocabulary_patterns": {},
+        "signature_phrases": [],
+        "suggested_attributes": [],
+        "samples_analyzed": len(samples),
+    }

@@ -1,16 +1,8 @@
-"""Content ingestion service — parsing and orchestrating content analysis."""
+"""Content ingestion service — parsing and text processing utilities."""
 
 import logging
-import math
 import re
-from uuid import UUID
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.models.content import ContentUpload
-from app.services import ai as ai_service
-from app.utils.exceptions import NotFoundError
 from app.utils.parsers import (
     detect_transcript_format,
     parse_plain_transcript,
@@ -28,88 +20,7 @@ FILLER_WORDS = {
 
 
 class IngestionService:
-    """Handles parsing and orchestrating content analysis."""
-
-    async def process_upload(
-        self,
-        db: AsyncSession,
-        content_upload_id: UUID,
-        workspace_id: UUID,
-    ) -> ContentUpload:
-        """Main entry point: load content, parse it, run AI analysis, save DNA card."""
-        # Load the ContentUpload from DB
-        result = await db.execute(
-            select(ContentUpload).where(
-                ContentUpload.id == content_upload_id,
-                ContentUpload.workspace_id == workspace_id,
-            )
-        )
-        content_upload = result.scalar_one_or_none()
-        if not content_upload:
-            raise NotFoundError(
-                message="Content upload not found",
-                detail=f"No content upload found with id {content_upload_id}",
-            )
-
-        # Set status to analyzing
-        content_upload.status = "analyzing"
-        await db.flush()
-
-        try:
-            # Detect content type and parse accordingly
-            raw_content = content_upload.raw_content
-            content_type = content_upload.content_type
-
-            if content_type == "blog":
-                parsed = self.parse_blog_content(raw_content)
-                clean_text = parsed.get("full_text", raw_content)
-            else:
-                # Transcript types: video_transcript, podcast_transcript
-                fmt = detect_transcript_format(raw_content)
-                if fmt == "srt":
-                    segments = parse_srt(raw_content)
-                elif fmt == "vtt":
-                    segments = parse_vtt(raw_content)
-                else:
-                    plain_segments = parse_plain_transcript(raw_content)
-                    segments = [
-                        {"start_time": 0.0, "end_time": 0.0, "text": seg["text"]}
-                        for seg in plain_segments
-                    ]
-
-                clean_text = self.extract_clean_text(segments)
-
-            # Call AI service to analyze content DNA
-            dna_card = await ai_service.analyze_content_dna(
-                content=clean_text,
-                content_type=content_type,
-                title=content_upload.title,
-            )
-
-            # For transcript content with timestamps, add clip windows
-            if content_type != "blog":
-                fmt = detect_transcript_format(raw_content)
-                if fmt in ("srt", "vtt"):
-                    if fmt == "srt":
-                        timed_segments = parse_srt(raw_content)
-                    else:
-                        timed_segments = parse_vtt(raw_content)
-                    clip_windows = self.identify_clip_windows(timed_segments)
-                    dna_card["clip_windows"] = clip_windows
-
-            # Save the DNA card
-            content_upload.content_dna = dna_card
-            content_upload.status = "analyzed"
-            await db.flush()
-
-            return content_upload
-
-        except Exception as e:
-            logger.error("Content analysis failed for %s: %s", content_upload_id, str(e))
-            content_upload.status = "failed"
-            content_upload.content_dna = {"error": str(e)}
-            await db.flush()
-            return content_upload
+    """Handles parsing and text processing for content analysis."""
 
     def parse_blog_content(self, raw_content: str) -> dict:
         """Parse blog/written content: extract structure from HTML/markdown.

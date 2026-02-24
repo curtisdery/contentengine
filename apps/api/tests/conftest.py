@@ -1,30 +1,12 @@
 import asyncio
-import uuid
 from typing import AsyncGenerator
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.database import Base, get_db
 from app.main import app
-from app.middleware.rate_limit import RateLimitMiddleware
-
-# Use SQLite for tests (in-memory)
-TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
-
-test_engine = create_async_engine(
-    TEST_DATABASE_URL,
-    echo=False,
-)
-
-test_async_session_factory = async_sessionmaker(
-    test_engine,
-    class_=AsyncSession,
-    expire_on_commit=False,
-)
 
 # ---------------------------------------------------------------------------
 # Fake Firebase claims used by all tests
@@ -49,19 +31,8 @@ def event_loop():
 
 
 @pytest.fixture(autouse=True)
-def disable_rate_limiting():
-    """Disable rate limiting during tests by making Redis unavailable to the middleware."""
-    with patch.object(RateLimitMiddleware, "_get_redis", return_value=None):
-        yield
-
-
-@pytest.fixture(autouse=True)
 def mock_firebase():
-    """Mock Firebase token verification for all tests.
-
-    Patches both import locations so that signup and get_current_user
-    both use the fake claims without hitting the Firebase Admin SDK.
-    """
+    """Mock Firebase token verification for all tests."""
     with patch(
         "app.api.v1.auth.verify_firebase_token",
         return_value=FAKE_FIREBASE_CLAIMS,
@@ -74,13 +45,9 @@ def mock_firebase():
 
 @pytest.fixture(autouse=True)
 def mock_encryption():
-    """Mock token encryption as pass-through for tests (no real Fernet key needed)."""
+    """Mock token encryption as pass-through for tests."""
     identity = lambda x: x  # noqa: E731
     with patch(
-        "app.services.platform_connection.encrypt_token", side_effect=identity,
-    ), patch(
-        "app.services.platform_connection.decrypt_token", side_effect=identity,
-    ), patch(
         "app.api.v1.connections.encrypt_token", side_effect=identity,
     ), patch(
         "app.services.oauth.encrypt_token", side_effect=identity,
@@ -88,36 +55,52 @@ def mock_encryption():
         yield
 
 
-@pytest_asyncio.fixture(autouse=True)
-async def setup_database():
-    """Create all tables before each test and drop them after."""
-    async with test_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    yield
-    async with test_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
+# ---------------------------------------------------------------------------
+# Firestore mock helpers (shared across all test files)
+# ---------------------------------------------------------------------------
+
+
+def _make_doc(doc_id: str, data: dict):
+    """Create a mock Firestore document snapshot."""
+    doc = MagicMock()
+    doc.id = doc_id
+    doc.exists = True
+    doc.to_dict.return_value = data
+    return doc
+
+
+def _doc_ref(doc_id: str = "mock-id"):
+    """Create a mock Firestore document reference."""
+    ref = AsyncMock()
+    ref.id = doc_id
+    return ref
+
+
+def _collection_with_docs(docs: list):
+    """Create a mock collection query that streams the given docs."""
+    query = MagicMock()
+
+    async def _stream():
+        for doc in docs:
+            yield doc
+
+    query.stream = _stream
+    query.where = MagicMock(return_value=query)
+    query.order_by = MagicMock(return_value=query)
+    query.limit = MagicMock(return_value=query)
+    return query
+
+
+def _empty_stream():
+    """Create a mock collection query that yields nothing."""
+    return _collection_with_docs([])
 
 
 @pytest_asyncio.fixture
-async def db_session() -> AsyncGenerator[AsyncSession, None]:
-    """Provide a transactional database session for tests."""
-    async with test_async_session_factory() as session:
-        yield session
-
-
-@pytest_asyncio.fixture
-async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
-    """Provide an async HTTP test client with overridden DB dependency."""
-
-    async def _override_get_db():
-        yield db_session
-
-    app.dependency_overrides[get_db] = _override_get_db
-
+async def client() -> AsyncGenerator[AsyncClient, None]:
+    """Provide an async HTTP test client."""
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://testserver",
     ) as ac:
         yield ac
-
-    app.dependency_overrides.clear()

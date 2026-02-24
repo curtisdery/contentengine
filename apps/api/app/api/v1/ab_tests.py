@@ -1,129 +1,159 @@
-"""A/B testing API routes for split-testing generated content variants."""
+"""A/B testing API routes — Firestore-backed."""
 
-from uuid import UUID
+from datetime import datetime, timezone
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Query, status
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_db
+from app.core.firestore import get_db
 from app.middleware.auth import get_current_user
-from app.models.organization import OrganizationMember, Workspace
-from app.models.user import User
-from app.schemas.autopilot import ABTestCreateRequest, ABTestResponse
-from app.services.ab_testing import ABTestingService
 from app.utils.exceptions import NotFoundError
 
 router = APIRouter()
-ab_testing_service = ABTestingService()
 
 
-async def get_user_workspace(user: User, db: AsyncSession) -> Workspace:
-    """Get the user's default workspace (first org's first workspace)."""
-    result = await db.execute(
-        select(OrganizationMember)
-        .where(OrganizationMember.user_id == user.id)
-        .limit(1)
-    )
-    membership = result.scalar_one_or_none()
-    if not membership:
-        raise NotFoundError(
-            message="No organization found",
-            detail="User does not belong to any organization",
-        )
-
-    result = await db.execute(
-        select(Workspace)
-        .where(Workspace.organization_id == membership.organization_id)
-        .limit(1)
-    )
-    workspace = result.scalar_one_or_none()
-    if not workspace:
-        raise NotFoundError(
-            message="No workspace found",
-            detail="Organization does not have any workspaces",
-        )
-
-    return workspace
-
-
-@router.post(
-    "",
-    response_model=ABTestResponse,
-    status_code=status.HTTP_201_CREATED,
-)
+@router.post("", status_code=status.HTTP_201_CREATED)
 async def create_ab_test(
-    request_body: ABTestCreateRequest,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> ABTestResponse:
+    request_body: dict,
+    current_user=Depends(get_current_user),
+) -> dict:
     """Create an A/B test between two output variants."""
-    workspace = await get_user_workspace(current_user, db)
-    test = await ab_testing_service.create_test(
-        db=db,
-        workspace_id=workspace.id,
-        content_upload_id=request_body.content_upload_id,
-        platform_id=request_body.platform_id,
-        variant_a_id=request_body.variant_a_output_id,
-        variant_b_id=request_body.variant_b_output_id,
-    )
-    return ABTestResponse.model_validate(test)
+    db = get_db()
+    now = datetime.now(timezone.utc)
+    doc_id = str(uuid4())
+
+    test_data = {
+        "user_id": current_user.id,
+        "content_upload_id": request_body.get("content_upload_id", ""),
+        "platform_id": request_body.get("platform_id", ""),
+        "variant_a_output_id": request_body.get("variant_a_output_id", ""),
+        "variant_b_output_id": request_body.get("variant_b_output_id", ""),
+        "status": "draft",
+        "winner": None,
+        "variant_a_metrics": {},
+        "variant_b_metrics": {},
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db.collection("ab_tests").document(doc_id).set(test_data)
+
+    return {**test_data, "id": doc_id}
 
 
-@router.get("", response_model=list[ABTestResponse])
+@router.get("")
 async def list_ab_tests(
     status_filter: str | None = Query(None, alias="status"),
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> list[ABTestResponse]:
+    current_user=Depends(get_current_user),
+) -> list[dict]:
     """List A/B tests, optionally filtered by status."""
-    workspace = await get_user_workspace(current_user, db)
-    tests = await ab_testing_service.get_tests(db, workspace.id, status=status_filter)
-    return [ABTestResponse.model_validate(t) for t in tests]
+    db = get_db()
+    query = db.collection("ab_tests").where("user_id", "==", current_user.id)
+
+    tests = []
+    async for doc in query.stream():
+        data = doc.to_dict()
+        if status_filter and data.get("status") != status_filter:
+            continue
+        tests.append({**data, "id": doc.id})
+
+    return tests
 
 
-@router.get("/{test_id}", response_model=ABTestResponse)
+@router.get("/{test_id}")
 async def get_ab_test(
-    test_id: UUID,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> ABTestResponse:
+    test_id: str,
+    current_user=Depends(get_current_user),
+) -> dict:
     """Get a single A/B test."""
-    workspace = await get_user_workspace(current_user, db)
-    test = await ab_testing_service.get_test(db, test_id, workspace.id)
-    return ABTestResponse.model_validate(test)
+    db = get_db()
+    doc = await db.collection("ab_tests").document(test_id).get()
+
+    if not doc.exists:
+        raise NotFoundError(message="A/B test not found", detail=f"No A/B test found with id {test_id}")
+
+    data = doc.to_dict()
+    if data.get("user_id") != current_user.id:
+        raise NotFoundError(message="A/B test not found", detail=f"No A/B test found with id {test_id}")
+
+    return {**data, "id": doc.id}
 
 
-@router.post("/{test_id}/start", response_model=ABTestResponse)
+@router.post("/{test_id}/start")
 async def start_ab_test(
-    test_id: UUID,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> ABTestResponse:
+    test_id: str,
+    current_user=Depends(get_current_user),
+) -> dict:
     """Start an A/B test (schedule both variants for publishing)."""
-    workspace = await get_user_workspace(current_user, db)
-    test = await ab_testing_service.start_test(db, test_id, workspace.id)
-    return ABTestResponse.model_validate(test)
+    db = get_db()
+    doc = await db.collection("ab_tests").document(test_id).get()
+
+    if not doc.exists:
+        raise NotFoundError(message="A/B test not found", detail=f"No A/B test found with id {test_id}")
+
+    data = doc.to_dict()
+    if data.get("user_id") != current_user.id:
+        raise NotFoundError(message="A/B test not found", detail=f"No A/B test found with id {test_id}")
+
+    await db.collection("ab_tests").document(test_id).update({
+        "status": "running",
+        "started_at": datetime.now(timezone.utc),
+        "updated_at": datetime.now(timezone.utc),
+    })
+
+    data["status"] = "running"
+    return {**data, "id": doc.id}
 
 
-@router.post("/{test_id}/evaluate", response_model=ABTestResponse)
+@router.post("/{test_id}/evaluate")
 async def evaluate_ab_test(
-    test_id: UUID,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> ABTestResponse:
+    test_id: str,
+    current_user=Depends(get_current_user),
+) -> dict:
     """Evaluate A/B test results and declare a winner."""
-    workspace = await get_user_workspace(current_user, db)
-    test = await ab_testing_service.evaluate_test(db, test_id, workspace.id)
-    return ABTestResponse.model_validate(test)
+    db = get_db()
+    doc = await db.collection("ab_tests").document(test_id).get()
+
+    if not doc.exists:
+        raise NotFoundError(message="A/B test not found", detail=f"No A/B test found with id {test_id}")
+
+    data = doc.to_dict()
+    if data.get("user_id") != current_user.id:
+        raise NotFoundError(message="A/B test not found", detail=f"No A/B test found with id {test_id}")
+
+    # Compare engagement metrics
+    a_eng = data.get("variant_a_metrics", {}).get("engagements", 0)
+    b_eng = data.get("variant_b_metrics", {}).get("engagements", 0)
+    winner = "A" if a_eng >= b_eng else "B"
+
+    await db.collection("ab_tests").document(test_id).update({
+        "status": "completed",
+        "winner": winner,
+        "completed_at": datetime.now(timezone.utc),
+        "updated_at": datetime.now(timezone.utc),
+    })
+
+    data["status"] = "completed"
+    data["winner"] = winner
+    return {**data, "id": doc.id}
 
 
 @router.delete("/{test_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def cancel_ab_test(
-    test_id: UUID,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    test_id: str,
+    current_user=Depends(get_current_user),
 ) -> None:
     """Cancel an A/B test."""
-    workspace = await get_user_workspace(current_user, db)
-    await ab_testing_service.cancel_test(db, test_id, workspace.id)
+    db = get_db()
+    doc = await db.collection("ab_tests").document(test_id).get()
+
+    if not doc.exists:
+        raise NotFoundError(message="A/B test not found", detail=f"No A/B test found with id {test_id}")
+
+    data = doc.to_dict()
+    if data.get("user_id") != current_user.id:
+        raise NotFoundError(message="A/B test not found", detail=f"No A/B test found with id {test_id}")
+
+    await db.collection("ab_tests").document(test_id).update({
+        "status": "cancelled",
+        "updated_at": datetime.now(timezone.utc),
+    })

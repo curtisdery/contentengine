@@ -8,7 +8,6 @@ from fastapi.responses import JSONResponse
 from app.api.v1.router import api_router
 from app.config import get_settings
 from app.middleware.logging import RequestLoggingMiddleware
-from app.services.publisher import init_publishers
 from app.utils.exceptions import PandocastException
 
 settings = get_settings()
@@ -33,7 +32,6 @@ structlog.configure(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize services on startup, clean up on shutdown."""
-    init_publishers()
     structlog.get_logger().info("app_startup", version=settings.APP_VERSION)
     yield
     structlog.get_logger().info("app_shutdown")
@@ -59,17 +57,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Rate limiting middleware (Redis-based, degrades gracefully if Redis is unavailable)
-try:
-    from app.middleware.rate_limit import RateLimitMiddleware
-
-    app.add_middleware(RateLimitMiddleware, redis_url=settings.REDIS_URL)
-except Exception:
-    structlog.get_logger().warning(
-        "rate_limit_middleware_disabled",
-        reason="Failed to initialize rate limiting middleware. App will run without rate limits.",
-    )
 
 # Request logging middleware
 app.add_middleware(RequestLoggingMiddleware)

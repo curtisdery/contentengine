@@ -1,55 +1,13 @@
-"""Security API routes — session management, audit log, and panic button."""
+"""Security API routes — Firestore-backed session management, audit log, and panic button."""
 
-from uuid import UUID
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query, Request, status
-from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_db
+from app.core.firestore import get_db
 from app.middleware.auth import get_current_user
-from app.models.organization import OrganizationMember, Workspace
-from app.models.platform_connection import PlatformConnection
-from app.models.user import Session, User
-from app.schemas.autopilot import (
-    AuditLogListResponse,
-    AuditLogResponse,
-    SessionResponse,
-)
-from app.services.audit import AuditService
-from app.utils.exceptions import NotFoundError
 
 router = APIRouter()
-audit_service = AuditService()
-
-
-async def get_user_workspace(user: User, db: AsyncSession) -> Workspace:
-    """Get the user's default workspace (first org's first workspace)."""
-    result = await db.execute(
-        select(OrganizationMember)
-        .where(OrganizationMember.user_id == user.id)
-        .limit(1)
-    )
-    membership = result.scalar_one_or_none()
-    if not membership:
-        raise NotFoundError(
-            message="No organization found",
-            detail="User does not belong to any organization",
-        )
-
-    result = await db.execute(
-        select(Workspace)
-        .where(Workspace.organization_id == membership.organization_id)
-        .limit(1)
-    )
-    workspace = result.scalar_one_or_none()
-    if not workspace:
-        raise NotFoundError(
-            message="No workspace found",
-            detail="Organization does not have any workspaces",
-        )
-
-    return workspace
 
 
 # ---------------------------------------------------------------------------
@@ -57,97 +15,66 @@ async def get_user_workspace(user: User, db: AsyncSession) -> Workspace:
 # ---------------------------------------------------------------------------
 
 
-@router.get("/sessions", response_model=list[SessionResponse])
+@router.get("/sessions")
 async def list_sessions(
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> list[SessionResponse]:
+    current_user=Depends(get_current_user),
+) -> list[dict]:
     """List active sessions for the current user."""
-    result = await db.execute(
-        select(Session)
-        .where(
-            Session.user_id == current_user.id,
-            Session.is_active == True,  # noqa: E712
-        )
-        .order_by(Session.created_at.desc())
+    db = get_db()
+    query = (
+        db.collection("sessions")
+        .where("user_id", "==", current_user.id)
+        .where("is_active", "==", True)
+        .order_by("created_at", direction="DESCENDING")
     )
-    sessions = list(result.scalars().all())
-    return [SessionResponse.model_validate(s) for s in sessions]
+
+    sessions = []
+    async for doc in query.stream():
+        sessions.append({**doc.to_dict(), "id": doc.id})
+
+    return sessions
 
 
 @router.delete("/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def revoke_session(
-    session_id: UUID,
+    session_id: str,
     request: Request,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
 ) -> None:
     """Revoke a specific session."""
-    result = await db.execute(
-        select(Session).where(
-            Session.id == session_id,
-            Session.user_id == current_user.id,
-        )
-    )
-    session = result.scalar_one_or_none()
-    if not session:
-        raise NotFoundError(
-            message="Session not found",
-            detail=f"No session found with id {session_id}",
-        )
+    db = get_db()
+    doc = await db.collection("sessions").document(session_id).get()
 
-    session.is_active = False
-    await db.flush()
+    if not doc.exists or doc.to_dict().get("user_id") != current_user.id:
+        from app.utils.exceptions import NotFoundError
+        raise NotFoundError(message="Session not found", detail=f"No session found with id {session_id}")
+
+    await db.collection("sessions").document(session_id).update({"is_active": False})
 
     # Audit log
-    await audit_service.log(
-        db=db,
-        user_id=current_user.id,
-        action="session_revoke",
-        resource_type="session",
-        resource_id=str(session_id),
-        ip_address=request.client.host if request.client else None,
-        user_agent=request.headers.get("user-agent"),
-    )
+    await _log_audit(db, current_user.id, "session_revoke", "session", session_id, request)
 
 
 @router.delete("/sessions", status_code=status.HTTP_204_NO_CONTENT)
 async def revoke_all_sessions(
     request: Request,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
 ) -> None:
-    """Revoke all sessions except the current one.
-
-    The current session is identified by the request's user_id being set
-    on the auth middleware. We revoke all OTHER active sessions.
-    """
-    # Get all active sessions for this user
-    result = await db.execute(
-        select(Session).where(
-            Session.user_id == current_user.id,
-            Session.is_active == True,  # noqa: E712
-        )
+    """Revoke all sessions for the current user."""
+    db = get_db()
+    query = (
+        db.collection("sessions")
+        .where("user_id", "==", current_user.id)
+        .where("is_active", "==", True)
     )
-    sessions = list(result.scalars().all())
 
     revoked_count = 0
-    for session in sessions:
-        # We cannot easily identify "the current session" without the refresh token,
-        # so we revoke all sessions. The user will need to re-authenticate.
-        session.is_active = False
+    async for doc in query.stream():
+        await db.collection("sessions").document(doc.id).update({"is_active": False})
         revoked_count += 1
 
-    await db.flush()
-
-    # Audit log
-    await audit_service.log(
-        db=db,
-        user_id=current_user.id,
-        action="session_revoke_all",
-        resource_type="session",
-        ip_address=request.client.host if request.client else None,
-        user_agent=request.headers.get("user-agent"),
+    await _log_audit(
+        db, current_user.id, "session_revoke_all", "session", None, request,
         metadata={"revoked_count": revoked_count},
     )
 
@@ -157,32 +84,54 @@ async def revoke_all_sessions(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/audit-log", response_model=AuditLogListResponse)
+@router.get("/audit-log")
 async def get_audit_log(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> AuditLogListResponse:
+    current_user=Depends(get_current_user),
+) -> dict:
     """Get the current user's audit log (paginated)."""
-    items, total = await audit_service.get_user_activity(
-        db, current_user.id, limit=limit, offset=offset
-    )
-    return AuditLogListResponse(
-        items=[AuditLogResponse.model_validate(item) for item in items],
-        total=total,
+    db = get_db()
+    query = (
+        db.collection("audit_logs")
+        .where("user_id", "==", current_user.id)
+        .order_by("created_at", direction="DESCENDING")
     )
 
+    all_items = []
+    async for doc in query.stream():
+        all_items.append({**doc.to_dict(), "id": doc.id})
 
-@router.get("/events", response_model=list[AuditLogResponse])
+    total = len(all_items)
+    items = all_items[offset : offset + limit]
+
+    return {"items": items, "total": total}
+
+
+@router.get("/events")
 async def get_security_events(
     days: int = Query(30, ge=1, le=365),
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> list[AuditLogResponse]:
+    current_user=Depends(get_current_user),
+) -> list[dict]:
     """Get security-relevant events for the current user."""
-    events = await audit_service.get_security_events(db, current_user.id, days=days)
-    return [AuditLogResponse.model_validate(e) for e in events]
+    db = get_db()
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    security_actions = {"login", "logout", "session_revoke", "session_revoke_all", "panic_button", "password_change"}
+
+    query = (
+        db.collection("audit_logs")
+        .where("user_id", "==", current_user.id)
+        .order_by("created_at", direction="DESCENDING")
+    )
+
+    events = []
+    async for doc in query.stream():
+        data = doc.to_dict()
+        created_at = data.get("created_at")
+        if created_at and created_at >= cutoff and data.get("action") in security_actions:
+            events.append({**data, "id": doc.id})
+
+    return events
 
 
 # ---------------------------------------------------------------------------
@@ -190,60 +139,49 @@ async def get_security_events(
 # ---------------------------------------------------------------------------
 
 
-@router.post("/panic", status_code=status.HTTP_200_OK)
+@router.post("/panic")
 async def panic_button(
     request: Request,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
 ) -> dict:
-    """Panic button: revoke all platform connections and all sessions.
-
-    This is an emergency action for when a user suspects their account
-    has been compromised.
-    """
-    workspace = await get_user_workspace(current_user, db)
+    """Panic button: revoke all platform connections and all sessions."""
+    db = get_db()
 
     # 1. Revoke all platform connections
-    result = await db.execute(
-        select(PlatformConnection).where(
-            PlatformConnection.workspace_id == workspace.id,
-            PlatformConnection.is_active == True,  # noqa: E712
-        )
+    conn_query = (
+        db.collection("connected_platforms")
+        .where("user_id", "==", current_user.id)
+        .where("is_active", "==", True)
     )
-    connections = list(result.scalars().all())
     connections_revoked = 0
-    for conn in connections:
-        conn.is_active = False
+    async for doc in conn_query.stream():
+        await db.collection("connected_platforms").document(doc.id).update({"is_active": False})
         connections_revoked += 1
 
     # 2. Revoke all sessions
-    result = await db.execute(
-        select(Session).where(
-            Session.user_id == current_user.id,
-            Session.is_active == True,  # noqa: E712
-        )
+    session_query = (
+        db.collection("sessions")
+        .where("user_id", "==", current_user.id)
+        .where("is_active", "==", True)
     )
-    sessions = list(result.scalars().all())
     sessions_revoked = 0
-    for session in sessions:
-        session.is_active = False
+    async for doc in session_query.stream():
+        await db.collection("sessions").document(doc.id).update({"is_active": False})
         sessions_revoked += 1
 
-    await db.flush()
+    # 3. Disable autopilot configs
+    autopilot_query = (
+        db.collection("autopilot_configs")
+        .where("user_id", "==", current_user.id)
+        .where("enabled", "==", True)
+    )
+    async for doc in autopilot_query.stream():
+        await db.collection("autopilot_configs").document(doc.id).update({"enabled": False})
 
-    # 3. Audit log
-    await audit_service.log(
-        db=db,
-        user_id=current_user.id,
-        action="panic_button",
-        resource_type="workspace",
-        resource_id=str(workspace.id),
-        ip_address=request.client.host if request.client else None,
-        user_agent=request.headers.get("user-agent"),
-        metadata={
-            "connections_revoked": connections_revoked,
-            "sessions_revoked": sessions_revoked,
-        },
+    # 4. Audit log
+    await _log_audit(
+        db, current_user.id, "panic_button", "account", current_user.id, request,
+        metadata={"connections_revoked": connections_revoked, "sessions_revoked": sessions_revoked},
     )
 
     return {
@@ -256,3 +194,25 @@ async def panic_button(
             f"re-authenticate."
         ),
     }
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+async def _log_audit(
+    db, user_id: str, action: str, resource_type: str,
+    resource_id: str | None, request: Request, metadata: dict | None = None,
+) -> None:
+    """Write an audit log entry to Firestore."""
+    await db.collection("audit_logs").document().set({
+        "user_id": user_id,
+        "action": action,
+        "resource_type": resource_type,
+        "resource_id": resource_id,
+        "ip_address": request.client.host if request.client else None,
+        "user_agent": request.headers.get("user-agent"),
+        "metadata": metadata,
+        "created_at": datetime.now(timezone.utc),
+    })
