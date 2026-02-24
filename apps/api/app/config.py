@@ -62,6 +62,11 @@ class Settings(BaseSettings):
     THREADS_CLIENT_ID: str = ""
     THREADS_CLIENT_SECRET: str = ""
 
+    # Cloud Tasks
+    WORKER_URL: str = "http://localhost:8000"
+    GCP_PROJECT: str = ""
+    GCP_LOCATION: str = "us-central1"
+
     # Account lockout
     MAX_FAILED_LOGIN_ATTEMPTS: int = 5
     LOCKOUT_DURATION_MINUTES: int = 15

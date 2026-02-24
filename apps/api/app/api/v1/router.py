@@ -22,8 +22,12 @@ api_router.include_router(content_router, prefix="/content", tags=["content"])
 api_router.include_router(voice_router, prefix="/voice", tags=["voice"])
 api_router.include_router(generation_router, prefix="/generation", tags=["generation"])
 api_router.include_router(calendar_router, prefix="/calendar", tags=["calendar"])
-api_router.include_router(connections_router, prefix="/connections", tags=["connections"])
+api_router.include_router(connections_router, prefix="/platforms", tags=["platforms"])
 api_router.include_router(analytics_router, prefix="/analytics", tags=["analytics"])
 api_router.include_router(autopilot_router, prefix="/autopilot", tags=["autopilot"])
 api_router.include_router(ab_tests_router, prefix="/ab-tests", tags=["ab-tests"])
 api_router.include_router(security_router, prefix="/security", tags=["security"])
+
+# Internal task endpoints (no auth — secured by Cloud Tasks OIDC)
+from app.api.v1.internal import router as internal_router
+api_router.include_router(internal_router, prefix="/internal", tags=["internal"])

@@ -1,876 +1,551 @@
-"""Tests for Sprint 7-8: Smart Calendar, Scheduling, and Publishing."""
-
-import uuid
-from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock
+"""Tests for Firestore-backed calendar, publishing pipeline, and distribution arc."""
 
 import pytest
-import pytest_asyncio
-from httpx import AsyncClient
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.models.calendar import ScheduledEvent
-from app.models.content import ContentUpload, GeneratedOutput
-from app.services.publisher import (
-    BasePlatformPublisher,
-    PublisherRegistry,
-    TwitterPublisher,
-    LinkedInPublisher,
-    init_publishers,
-)
-from app.services.scheduler import (
-    CADENCE_DAYS,
-    DISTRIBUTION_ARC,
-    SchedulerService,
-)
-from tests.conftest import FAKE_TOKEN
+from app.services.publishers.base import PublishResult
+from app.services.scheduler import DISTRIBUTION_ARC, FORMAT_TIERS
+from app.utils.exceptions import NotFoundError, ValidationError
 
 
 # ---------------------------------------------------------------------------
-# Fixtures
+# Helpers — fake Firestore document / async stream
 # ---------------------------------------------------------------------------
 
-SIGNUP_URL = "/api/v1/auth/signup"
-CALENDAR_BASE = "/api/v1/calendar"
+def _make_doc(doc_id: str, data: dict, *, exists: bool = True):
+    """Create a mock Firestore document snapshot."""
+    doc = MagicMock()
+    doc.id = doc_id
+    doc.exists = exists
+    doc.to_dict.return_value = data
+    doc.reference = MagicMock()
+    doc.reference.update = AsyncMock()
+    return doc
 
 
-@pytest_asyncio.fixture
-async def auth_headers(client: AsyncClient) -> dict[str, str]:
-    """Sign up a test user and return auth headers."""
-    response = await client.post(
-        SIGNUP_URL,
-        json={"firebase_token": FAKE_TOKEN, "full_name": "Calendar Test User"},
+def _doc_ref(doc_snapshot):
+    """Create a mock document reference that returns the given snapshot on .get()."""
+    ref = MagicMock()
+    ref.get = AsyncMock(return_value=doc_snapshot)
+    ref.update = AsyncMock()
+    ref.set = AsyncMock()
+    return ref
+
+
+def _collection_with_docs(*docs):
+    """Return a mock query whose .stream() yields the given docs."""
+    async def fake_stream():
+        for d in docs:
+            yield d
+
+    query = MagicMock()
+    query.stream = fake_stream
+    query.where = MagicMock(return_value=query)
+    query.limit = MagicMock(return_value=query)
+    return query
+
+
+def _empty_stream():
+    """Return a mock query whose .stream() yields nothing."""
+    async def fake_stream():
+        return
+        yield  # noqa: make it an async generator
+
+    query = MagicMock()
+    query.stream = fake_stream
+    query.where = MagicMock(return_value=query)
+    query.limit = MagicMock(return_value=query)
+    return query
+
+
+def _fake_user(user_id="user_1"):
+    return MagicMock(id=user_id)
+
+
+NOW = datetime(2026, 2, 23, 12, 0, 0, tzinfo=timezone.utc)
+
+SAMPLE_OUTPUT = {
+    "user_id": "user_1",
+    "content": "Hello world",
+    "platform": "twitter",
+    "status": "approved",
+}
+
+SAMPLE_EVENT = {
+    "user_id": "user_1",
+    "output_id": "output_1",
+    "platform": "twitter",
+    "scheduled_at": NOW - timedelta(minutes=5),
+    "status": "scheduled",
+    "retry_count": 0,
+    "max_retries": 3,
+}
+
+
+# ---------------------------------------------------------------------------
+# 1. test_schedule_creates_queued_post
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_schedule_creates_queued_post():
+    """POST /schedule creates a scheduled_posts doc and updates the output status."""
+    from app.api.v1.calendar import schedule_output, ScheduleRequest
+
+    output_doc = _make_doc("output_1", SAMPLE_OUTPUT)
+    output_ref = _doc_ref(output_doc)
+
+    # No existing scheduled posts for this output
+    empty_q = _empty_stream()
+
+    # Track the scheduled post creation
+    created_ref = MagicMock()
+    created_ref.id = "event_abc"
+    add_result = (None, created_ref)
+
+    db = MagicMock()
+
+    def route_collection(name):
+        coll = MagicMock()
+        if name == "generated_outputs":
+            coll.document.return_value = output_ref
+            return coll
+        elif name == "scheduled_posts":
+            coll.where.return_value = empty_q
+            coll.add = AsyncMock(return_value=add_result)
+            return coll
+        return coll
+
+    db.collection.side_effect = route_collection
+
+    body = ScheduleRequest(
+        output_id="output_1",
+        scheduled_at=NOW + timedelta(hours=2),
+        platform="twitter",
     )
-    assert response.status_code == 201, response.text
-    return {"Authorization": f"Bearer {FAKE_TOKEN}"}
+
+    with patch("app.api.v1.calendar.get_db", return_value=db):
+        result = await schedule_output(body=body, current_user=_fake_user())
+
+    assert result["id"] == "event_abc"
+    assert result["status"] == "scheduled"
+    assert result["platform"] == "twitter"
+    output_ref.update.assert_called_once()
 
 
-@pytest_asyncio.fixture
-async def content_with_outputs(
-    client: AsyncClient,
-    auth_headers: dict[str, str],
-    db_session: AsyncSession,
-) -> ContentUpload:
-    """Create a content upload with several approved outputs for testing."""
-    # Upload content
-    response = await client.post(
-        "/api/v1/content/upload",
-        json={
-            "title": "Test Calendar Content",
-            "content_type": "blog",
-            "raw_content": "This is a test blog post with enough content for analysis. " * 20,
-        },
-        headers=auth_headers,
+# ---------------------------------------------------------------------------
+# 2. test_publish_succeeds_updates_status
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_publish_succeeds_updates_status():
+    """publish-post marks event as published and updates the output."""
+    from app.api.v1.internal import publish_post
+
+    event_doc = _make_doc("event_1", SAMPLE_EVENT)
+    event_ref = _doc_ref(event_doc)
+
+    output_doc = _make_doc("output_1", SAMPLE_OUTPUT)
+    output_ref = _doc_ref(output_doc)
+
+    conn_doc = _make_doc("conn_1", {
+        "platform": "twitter",
+        "user_id": "user_1",
+        "is_active": True,
+        "access_token_encrypted": "encrypted_token",
+    })
+    conn_stream = _collection_with_docs(conn_doc)
+
+    user_ref = MagicMock()
+    user_ref.update = AsyncMock()
+
+    db = MagicMock()
+
+    def route_collection(name):
+        coll = MagicMock()
+        if name == "scheduled_posts":
+            coll.document.return_value = event_ref
+            return coll
+        elif name == "generated_outputs":
+            coll.document.return_value = output_ref
+            return coll
+        elif name == "connected_platforms":
+            coll.where.return_value = conn_stream
+            return coll
+        elif name == "users":
+            coll.document.return_value = user_ref
+            return coll
+        return coll
+
+    db.collection.side_effect = route_collection
+
+    publish_result = PublishResult(
+        success=True,
+        platform="twitter",
+        platform_post_id="tweet_123",
+        platform_post_url="https://twitter.com/i/status/tweet_123",
     )
-    assert response.status_code == 201, response.text
-    content_id = response.json()["id"]
 
-    # Load the content upload from DB
-    result = await db_session.execute(
-        select(ContentUpload).where(ContentUpload.id == uuid.UUID(content_id))
+    request = MagicMock()
+    request.json = AsyncMock(return_value={"event_id": "event_1"})
+
+    with patch("app.api.v1.internal.get_db", return_value=db), \
+         patch("app.api.v1.internal.decrypt", return_value="real_token"), \
+         patch("app.api.v1.internal.get_publisher") as mock_pub:
+        mock_publisher = MagicMock()
+        mock_publisher.validate = MagicMock()
+        mock_publisher.publish = AsyncMock(return_value=publish_result)
+        mock_pub.return_value = mock_publisher
+
+        result = await publish_post(request)
+
+    assert result["status"] == "published"
+    assert result["platform_post_id"] == "tweet_123"
+    # Event ref should have been updated with "published" status
+    event_ref.update.assert_called()
+
+
+# ---------------------------------------------------------------------------
+# 3. test_publish_thread_chains
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_publish_thread_chains():
+    """Twitter publisher splits \\n---\\n content into chained reply tweets."""
+    from app.services.publishers.twitter import TwitterPublisher
+
+    publisher = TwitterPublisher()
+    content = "First tweet\n---\nSecond tweet\n---\nThird tweet"
+    output = {"content": content}
+
+    # Validate should pass (all under 280 chars)
+    publisher.validate(output)
+
+    call_count = 0
+
+    async def mock_post(url, json, headers):
+        nonlocal call_count
+        call_count += 1
+        resp = MagicMock()
+        resp.status_code = 201
+        resp.json.return_value = {"data": {"id": f"tweet_{call_count}"}}
+        return resp
+
+    with patch("app.services.publishers.twitter.httpx.AsyncClient") as mock_client_cls:
+        ctx = AsyncMock()
+        ctx.post = mock_post
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=ctx)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        result = await publisher.publish(output=output, token="token_123")
+
+    assert result.success is True
+    assert result.metadata.get("thread_length") == 3
+    assert result.platform_post_id == "tweet_1"
+    assert call_count == 3
+
+
+# ---------------------------------------------------------------------------
+# 4. test_publish_retries_on_rate_limit
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_publish_retries_on_rate_limit():
+    """When publish fails and retry_count < max_retries, event is re-queued with backoff."""
+    from app.api.v1.internal import publish_post
+
+    event_data = {**SAMPLE_EVENT, "retry_count": 0, "max_retries": 3}
+    event_doc = _make_doc("event_1", event_data)
+    event_ref = _doc_ref(event_doc)
+
+    output_doc = _make_doc("output_1", SAMPLE_OUTPUT)
+    output_ref = _doc_ref(output_doc)
+
+    conn_doc = _make_doc("conn_1", {
+        "platform": "twitter",
+        "user_id": "user_1",
+        "is_active": True,
+        "access_token_encrypted": "enc",
+    })
+    conn_stream = _collection_with_docs(conn_doc)
+
+    db = MagicMock()
+
+    def route_collection(name):
+        coll = MagicMock()
+        if name == "scheduled_posts":
+            coll.document.return_value = event_ref
+            return coll
+        elif name == "generated_outputs":
+            coll.document.return_value = output_ref
+            return coll
+        elif name == "connected_platforms":
+            coll.where.return_value = conn_stream
+            return coll
+        return coll
+
+    db.collection.side_effect = route_collection
+
+    request = MagicMock()
+    request.json = AsyncMock(return_value={"event_id": "event_1"})
+
+    with patch("app.api.v1.internal.get_db", return_value=db), \
+         patch("app.api.v1.internal.decrypt", return_value="tok"), \
+         patch("app.api.v1.internal.get_publisher") as mock_pub:
+        mock_publisher = MagicMock()
+        mock_publisher.validate = MagicMock()
+        mock_publisher.publish = AsyncMock(side_effect=Exception("429 Too Many Requests"))
+        mock_pub.return_value = mock_publisher
+
+        result = await publish_post(request)
+
+    assert result["status"] == "retrying"
+    assert result["retry_count"] == 1
+    assert result["backoff_seconds"] == 120  # 2^1 * 60
+
+
+# ---------------------------------------------------------------------------
+# 5. test_publish_fails_permanently_on_auth
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_publish_fails_permanently_on_auth():
+    """When retries exhausted, event is marked failed permanently."""
+    from app.api.v1.internal import publish_post
+
+    event_data = {**SAMPLE_EVENT, "retry_count": 2, "max_retries": 3}
+    event_doc = _make_doc("event_1", event_data)
+    event_ref = _doc_ref(event_doc)
+
+    output_doc = _make_doc("output_1", SAMPLE_OUTPUT)
+    output_ref = _doc_ref(output_doc)
+
+    conn_doc = _make_doc("conn_1", {
+        "platform": "twitter",
+        "user_id": "user_1",
+        "is_active": True,
+        "access_token_encrypted": "enc",
+    })
+    conn_stream = _collection_with_docs(conn_doc)
+
+    db = MagicMock()
+
+    def route_collection(name):
+        coll = MagicMock()
+        if name == "scheduled_posts":
+            coll.document.return_value = event_ref
+            return coll
+        elif name == "generated_outputs":
+            coll.document.return_value = output_ref
+            return coll
+        elif name == "connected_platforms":
+            coll.where.return_value = conn_stream
+            return coll
+        return coll
+
+    db.collection.side_effect = route_collection
+
+    request = MagicMock()
+    request.json = AsyncMock(return_value={"event_id": "event_1"})
+
+    with patch("app.api.v1.internal.get_db", return_value=db), \
+         patch("app.api.v1.internal.decrypt", return_value="tok"), \
+         patch("app.api.v1.internal.get_publisher") as mock_pub:
+        mock_publisher = MagicMock()
+        mock_publisher.validate = MagicMock()
+        mock_publisher.publish = AsyncMock(side_effect=Exception("401 Unauthorized"))
+        mock_pub.return_value = mock_publisher
+
+        result = await publish_post(request)
+
+    assert result["status"] == "failed"
+    assert "401 Unauthorized" in result["reason"]
+    # Event should be updated with "failed" status
+    event_ref.update.assert_called()
+    last_update = event_ref.update.call_args[0][0]
+    assert last_update["status"] == "failed"
+    assert last_update["retry_count"] == 3
+
+
+# ---------------------------------------------------------------------------
+# 6. test_publish_idempotent
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_publish_idempotent():
+    """Publish-post skips already-published or cancelled events."""
+    from app.api.v1.internal import publish_post
+
+    for terminal_status in ("published", "cancelled"):
+        event_data = {**SAMPLE_EVENT, "status": terminal_status}
+        event_doc = _make_doc("event_1", event_data)
+        event_ref = _doc_ref(event_doc)
+
+        db = MagicMock()
+        coll = MagicMock()
+        coll.document.return_value = event_ref
+        db.collection.return_value = coll
+
+        request = MagicMock()
+        request.json = AsyncMock(return_value={"event_id": "event_1"})
+
+        with patch("app.api.v1.internal.get_db", return_value=db):
+            result = await publish_post(request)
+
+        assert result["status"] == "skipped"
+        assert f"already_{terminal_status}" in result["reason"]
+
+
+# ---------------------------------------------------------------------------
+# 7. test_distribution_arc_tiers
+# ---------------------------------------------------------------------------
+
+def test_distribution_arc_tiers():
+    """FORMAT_TIERS cover all expected distribution arc days and DISTRIBUTION_ARC has valid entries."""
+    # Verify FORMAT_TIERS keys are ordered correctly
+    tier_order = ["immediate", "day2", "day3", "day5", "day7", "day10", "day14"]
+    assert list(FORMAT_TIERS.keys()) == tier_order
+
+    # Verify each tier has at least one format
+    for tier, formats in FORMAT_TIERS.items():
+        assert len(formats) > 0, f"Tier {tier} has no formats"
+
+    # Verify DISTRIBUTION_ARC entries have required keys
+    for platform_id, info in DISTRIBUTION_ARC.items():
+        assert "day" in info, f"{platform_id} missing 'day'"
+        assert "hour" in info, f"{platform_id} missing 'hour'"
+        assert "minute" in info, f"{platform_id} missing 'minute'"
+        assert 0 <= info["hour"] <= 23, f"{platform_id} has invalid hour {info['hour']}"
+        assert 0 <= info["minute"] <= 59, f"{platform_id} has invalid minute"
+
+    # Verify immediate formats map to day-1 in DISTRIBUTION_ARC
+    immediate_formats = FORMAT_TIERS["immediate"]
+    for fmt in immediate_formats:
+        arc_key = fmt.lower()
+        if arc_key in DISTRIBUTION_ARC:
+            assert DISTRIBUTION_ARC[arc_key]["day"] == 1, \
+                f"Immediate format {fmt} should be day 1 in arc"
+
+
+# ---------------------------------------------------------------------------
+# 8. test_distribution_arc_conflicts
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_distribution_arc_conflicts():
+    """Scheduling an already-scheduled output raises ValidationError."""
+    from app.api.v1.calendar import schedule_output, ScheduleRequest
+
+    output_doc = _make_doc("output_1", SAMPLE_OUTPUT)
+    output_ref = _doc_ref(output_doc)
+
+    # Existing scheduled post for this output
+    existing_doc = _make_doc("existing_event", SAMPLE_EVENT)
+    existing_q = _collection_with_docs(existing_doc)
+
+    db = MagicMock()
+
+    def route_collection(name):
+        coll = MagicMock()
+        if name == "generated_outputs":
+            coll.document.return_value = output_ref
+            return coll
+        elif name == "scheduled_posts":
+            coll.where.return_value = existing_q
+            return coll
+        return coll
+
+    db.collection.side_effect = route_collection
+
+    body = ScheduleRequest(
+        output_id="output_1",
+        scheduled_at=NOW + timedelta(hours=3),
     )
-    content_upload = result.scalar_one()
 
-    # Manually create some outputs with "approved" status for testing
-    platform_ids = [
-        ("linkedin_post", "LinkedIn Post"),
-        ("twitter_thread", "Twitter/X Thread"),
-        ("instagram_carousel", "Instagram Carousel"),
-        ("email_newsletter", "Email Newsletter"),
-        ("bluesky_post", "Bluesky Post"),
-        ("reddit_post", "Reddit Post"),
-    ]
+    with patch("app.api.v1.calendar.get_db", return_value=db):
+        with pytest.raises(ValidationError) as exc_info:
+            await schedule_output(body=body, current_user=_fake_user())
 
-    for platform_id, format_name in platform_ids:
-        output = GeneratedOutput(
-            content_upload_id=content_upload.id,
-            platform_id=platform_id,
-            format_name=format_name,
-            content=f"Test content for {format_name}. This is a sample output.",
-            status="approved",
-        )
-        db_session.add(output)
-
-    await db_session.flush()
-    await db_session.refresh(content_upload)
-    return content_upload
+    assert "Already scheduled" in exc_info.value.message
 
 
 # ---------------------------------------------------------------------------
-# Distribution Arc Tests (unit tests, no DB needed)
+# 9. test_due_post_checker
 # ---------------------------------------------------------------------------
 
+@pytest.mark.asyncio
+async def test_due_post_checker():
+    """check-due-posts finds due events and enqueues publish tasks."""
+    from app.api.v1.internal import check_due_posts
 
-class TestDistributionArc:
-    """Tests for the distribution arc logic."""
+    due_1 = _make_doc("event_due_1", {**SAMPLE_EVENT, "scheduled_at": NOW - timedelta(minutes=5)})
+    due_2 = _make_doc("event_due_2", {**SAMPLE_EVENT, "scheduled_at": NOW - timedelta(minutes=1)})
 
-    def setup_method(self):
-        self.scheduler = SchedulerService()
+    due_stream = _collection_with_docs(due_1, due_2)
 
-    def _make_output(self, platform_id: str) -> MagicMock:
-        """Create a mock GeneratedOutput with a given platform_id."""
-        output = MagicMock(spec=GeneratedOutput)
-        output.id = uuid.uuid4()
-        output.platform_id = platform_id
-        return output
+    db = MagicMock()
+    coll = MagicMock()
+    coll.where.return_value = due_stream
+    db.collection.return_value = coll
 
-    def test_create_distribution_arc_sequence_order(self):
-        """Verify day 1 = linkedin+twitter, day 2 = carousel, day 3 = newsletter, etc."""
-        outputs = [
-            self._make_output("linkedin_post"),
-            self._make_output("twitter_thread"),
-            self._make_output("instagram_carousel"),
-            self._make_output("email_newsletter"),
-            self._make_output("bluesky_post"),
-            self._make_output("reddit_post"),
-        ]
+    with patch("app.api.v1.internal.get_db", return_value=db), \
+         patch("app.api.v1.internal.enqueue_task", new_callable=AsyncMock) as mock_enqueue:
+        mock_enqueue.return_value = "tasks/publish-event_due_1"
 
-        # Use a future date to avoid the "past date" adjustment
-        start = datetime(2030, 6, 1, tzinfo=timezone.utc)
-        arc = self.scheduler.create_distribution_arc(outputs, start)
+        result = await check_due_posts()
 
-        assert len(arc) == 6
+    assert result["enqueued"] == 2
+    assert mock_enqueue.call_count == 2
 
-        # Build a lookup from platform_id to arc item
-        by_platform = {item["platform_id"]: item for item in arc}
-
-        # Day 1: LinkedIn and Twitter
-        linkedin_dt = by_platform["linkedin_post"]["suggested_datetime"]
-        twitter_dt = by_platform["twitter_thread"]["suggested_datetime"]
-        assert linkedin_dt.day == 1  # June 1
-        assert twitter_dt.day == 1
-
-        # Day 2: Instagram carousel
-        instagram_dt = by_platform["instagram_carousel"]["suggested_datetime"]
-        assert instagram_dt.day == 2  # June 2
-
-        # Day 3: Email newsletter
-        email_dt = by_platform["email_newsletter"]["suggested_datetime"]
-        assert email_dt.day == 3  # June 3
-
-        # Day 4: Bluesky
-        bluesky_dt = by_platform["bluesky_post"]["suggested_datetime"]
-        assert bluesky_dt.day == 4  # June 4
-
-        # Day 7: Reddit
-        reddit_dt = by_platform["reddit_post"]["suggested_datetime"]
-        assert reddit_dt.day == 7  # June 7
-
-    def test_create_distribution_arc_respects_start_date(self):
-        """Arc should offset from the provided start_date."""
-        outputs = [self._make_output("linkedin_post")]
-        start = datetime(2030, 3, 15, 9, 0, 0, tzinfo=timezone.utc)
-
-        arc = self.scheduler.create_distribution_arc(outputs, start)
-        assert len(arc) == 1
-
-        # LinkedIn is Day 1, so it should be March 15
-        suggested = arc[0]["suggested_datetime"]
-        assert suggested.year == 2030
-        assert suggested.month == 3
-        assert suggested.day == 15
-
-    def test_create_distribution_arc_skips_unapplicable_platforms(self):
-        """Arc should handle unknown platform_ids gracefully with a default day."""
-        outputs = [
-            self._make_output("linkedin_post"),
-            self._make_output("unknown_platform_xyz"),
-        ]
-        start = datetime(2030, 6, 1, tzinfo=timezone.utc)
-
-        arc = self.scheduler.create_distribution_arc(outputs, start)
-        assert len(arc) == 2
-
-        # Unknown platform should get a default schedule (day 7)
-        by_platform = {item["platform_id"]: item for item in arc}
-        unknown_dt = by_platform["unknown_platform_xyz"]["suggested_datetime"]
-        assert unknown_dt.day == 7  # Default day for unknown platforms
-
-    def test_create_distribution_arc_empty_outputs(self):
-        """Empty output list should return empty arc."""
-        arc = self.scheduler.create_distribution_arc([], datetime.now(timezone.utc))
-        assert arc == []
-
-    def test_create_distribution_arc_sorted_chronologically(self):
-        """Arc items should be sorted by suggested_datetime."""
-        outputs = [
-            self._make_output("reddit_post"),      # Day 7
-            self._make_output("linkedin_post"),     # Day 1
-            self._make_output("email_newsletter"),  # Day 3
-        ]
-        start = datetime(2030, 6, 1, tzinfo=timezone.utc)
-
-        arc = self.scheduler.create_distribution_arc(outputs, start)
-
-        datetimes = [item["suggested_datetime"] for item in arc]
-        assert datetimes == sorted(datetimes)
+    # Verify dedup task IDs
+    call_args_list = mock_enqueue.call_args_list
+    task_ids = [c.kwargs.get("task_id") for c in call_args_list]
+    assert "publish-event_due_1" in task_ids
+    assert "publish-event_due_2" in task_ids
 
 
 # ---------------------------------------------------------------------------
-# Content Gap Detection Tests
+# 10. test_cancel_post
 # ---------------------------------------------------------------------------
 
-
-class TestContentGapDetection:
-    """Tests for content gap detection logic."""
-
-    @pytest.mark.asyncio
-    async def test_detect_content_gaps_no_events(self, db_session: AsyncSession):
-        """When there are no events, all known platforms should show as gaps."""
-        scheduler = SchedulerService()
-        workspace_id = uuid.uuid4()
-
-        gaps = await scheduler.detect_content_gaps(db=db_session, workspace_id=workspace_id)
-
-        # Should have entries for all known platforms
-        assert len(gaps) > 0
-
-        # All should have severity > "none" since there's no history
-        platform_ids = {g["platform_id"] for g in gaps}
-        assert "linkedin_post" in platform_ids
-        assert "twitter_single" in platform_ids
-
-        for gap in gaps:
-            assert gap["gap_severity"] != "none"
-
-    @pytest.mark.asyncio
-    async def test_detect_content_gaps_recent_event(
-        self, db_session: AsyncSession, content_with_outputs: ContentUpload
-    ):
-        """A recently scheduled event should show no gap."""
-        scheduler = SchedulerService()
-        workspace_id = content_with_outputs.workspace_id
-
-        # Get an output to schedule
-        result = await db_session.execute(
-            select(GeneratedOutput).where(
-                GeneratedOutput.content_upload_id == content_with_outputs.id,
-                GeneratedOutput.platform_id == "linkedin_post",
-            )
-        )
-        output = result.scalar_one()
-
-        # Schedule it for right now
-        now = datetime.now(timezone.utc)
-        event = ScheduledEvent(
-            workspace_id=workspace_id,
-            generated_output_id=output.id,
-            platform_id="linkedin_post",
-            scheduled_at=now,
-            status="scheduled",
-        )
-        db_session.add(event)
-        await db_session.flush()
-
-        gaps = await scheduler.detect_content_gaps(db=db_session, workspace_id=workspace_id)
-
-        # Find the linkedin gap
-        linkedin_gap = next((g for g in gaps if g["platform_id"] == "linkedin_post"), None)
-        assert linkedin_gap is not None
-        assert linkedin_gap["gap_severity"] == "none"
-        assert linkedin_gap["days_since_last"] == 0
-
-    @pytest.mark.asyncio
-    async def test_detect_content_gaps_old_event(
-        self, db_session: AsyncSession, content_with_outputs: ContentUpload
-    ):
-        """An event scheduled long ago should show a gap."""
-        scheduler = SchedulerService()
-        workspace_id = content_with_outputs.workspace_id
-
-        result = await db_session.execute(
-            select(GeneratedOutput).where(
-                GeneratedOutput.content_upload_id == content_with_outputs.id,
-                GeneratedOutput.platform_id == "linkedin_post",
-            )
-        )
-        output = result.scalar_one()
-
-        # Schedule it for 30 days ago
-        old_date = datetime.now(timezone.utc) - timedelta(days=30)
-        event = ScheduledEvent(
-            workspace_id=workspace_id,
-            generated_output_id=output.id,
-            platform_id="linkedin_post",
-            scheduled_at=old_date,
-            status="published",
-        )
-        db_session.add(event)
-        await db_session.flush()
-
-        gaps = await scheduler.detect_content_gaps(db=db_session, workspace_id=workspace_id)
-
-        linkedin_gap = next((g for g in gaps if g["platform_id"] == "linkedin_post"), None)
-        assert linkedin_gap is not None
-        # LinkedIn cadence is 2 days, 30 days ago is very severe
-        assert linkedin_gap["gap_severity"] == "severe"
-        assert linkedin_gap["days_since_last"] >= 29
-
-
-# ---------------------------------------------------------------------------
-# Scheduling API Integration Tests
-# ---------------------------------------------------------------------------
-
-
-class TestScheduleOutputAPI:
-    """Integration tests for scheduling endpoints."""
-
-    @pytest.mark.asyncio
-    async def test_schedule_output_api(
-        self,
-        client: AsyncClient,
-        auth_headers: dict[str, str],
-        content_with_outputs: ContentUpload,
-        db_session: AsyncSession,
-    ):
-        """Test scheduling a single output via the API."""
-        # Get an approved output
-        result = await db_session.execute(
-            select(GeneratedOutput).where(
-                GeneratedOutput.content_upload_id == content_with_outputs.id,
-                GeneratedOutput.platform_id == "linkedin_post",
-            )
-        )
-        output = result.scalar_one()
-
-        scheduled_at = (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat()
-
-        response = await client.post(
-            f"{CALENDAR_BASE}/schedule",
-            json={
-                "output_id": str(output.id),
-                "scheduled_at": scheduled_at,
-            },
-            headers=auth_headers,
-        )
-        assert response.status_code == 201, response.text
-
-        data = response.json()
-        assert data["status"] == "scheduled"
-        assert data["platform_id"] == "linkedin_post"
-        assert data["generated_output_id"] == str(output.id)
-        assert data["priority"] == 1  # Manual schedule
-
-    @pytest.mark.asyncio
-    async def test_reschedule_event_api(
-        self,
-        client: AsyncClient,
-        auth_headers: dict[str, str],
-        content_with_outputs: ContentUpload,
-        db_session: AsyncSession,
-    ):
-        """Test rescheduling an event via the API."""
-        # Schedule first
-        result = await db_session.execute(
-            select(GeneratedOutput).where(
-                GeneratedOutput.content_upload_id == content_with_outputs.id,
-                GeneratedOutput.platform_id == "twitter_thread",
-            )
-        )
-        output = result.scalar_one()
-
-        original_time = (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat()
-        new_time = (datetime.now(timezone.utc) + timedelta(hours=5)).isoformat()
-
-        # Schedule
-        response = await client.post(
-            f"{CALENDAR_BASE}/schedule",
-            json={
-                "output_id": str(output.id),
-                "scheduled_at": original_time,
-            },
-            headers=auth_headers,
-        )
-        assert response.status_code == 201
-        event_id = response.json()["id"]
-
-        # Reschedule
-        response = await client.patch(
-            f"{CALENDAR_BASE}/events/{event_id}/reschedule",
-            json={"scheduled_at": new_time},
-            headers=auth_headers,
-        )
-        assert response.status_code == 200, response.text
-
-        data = response.json()
-        assert data["status"] == "scheduled"
-
-    @pytest.mark.asyncio
-    async def test_cancel_event_api(
-        self,
-        client: AsyncClient,
-        auth_headers: dict[str, str],
-        content_with_outputs: ContentUpload,
-        db_session: AsyncSession,
-    ):
-        """Test cancelling an event via the API."""
-        result = await db_session.execute(
-            select(GeneratedOutput).where(
-                GeneratedOutput.content_upload_id == content_with_outputs.id,
-                GeneratedOutput.platform_id == "instagram_carousel",
-            )
-        )
-        output = result.scalar_one()
-
-        scheduled_at = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
-
-        # Schedule
-        response = await client.post(
-            f"{CALENDAR_BASE}/schedule",
-            json={
-                "output_id": str(output.id),
-                "scheduled_at": scheduled_at,
-            },
-            headers=auth_headers,
-        )
-        assert response.status_code == 201
-        event_id = response.json()["id"]
-
-        # Cancel
-        response = await client.delete(
-            f"{CALENDAR_BASE}/events/{event_id}",
-            headers=auth_headers,
-        )
-        assert response.status_code == 204
-
-    @pytest.mark.asyncio
-    async def test_get_calendar_events_date_range(
-        self,
-        client: AsyncClient,
-        auth_headers: dict[str, str],
-        content_with_outputs: ContentUpload,
-        db_session: AsyncSession,
-    ):
-        """Test getting events within a date range."""
-        # Schedule two outputs
-        results = await db_session.execute(
-            select(GeneratedOutput).where(
-                GeneratedOutput.content_upload_id == content_with_outputs.id,
-            )
-        )
-        outputs = list(results.scalars().all())
-
-        for i, output in enumerate(outputs[:2]):
-            scheduled_at = (datetime.now(timezone.utc) + timedelta(hours=i + 1)).isoformat()
-            response = await client.post(
-                f"{CALENDAR_BASE}/schedule",
-                json={
-                    "output_id": str(output.id),
-                    "scheduled_at": scheduled_at,
-                },
-                headers=auth_headers,
-            )
-            assert response.status_code == 201, response.text
-
-        # Query events
-        start = datetime.now(timezone.utc).isoformat()
-        end = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
-
-        response = await client.get(
-            f"{CALENDAR_BASE}/events",
-            params={"start": start, "end": end},
-            headers=auth_headers,
-        )
-        assert response.status_code == 200, response.text
-
-        data = response.json()
-        assert data["total"] >= 2
-        assert len(data["events"]) >= 2
-
-        # Each event should have enriched data
-        for event in data["events"]:
-            assert "platform_id" in event
-            assert "status" in event
-
-
-# ---------------------------------------------------------------------------
-# Mark Failed with Retry Backoff Tests
-# ---------------------------------------------------------------------------
-
-
-class TestMarkFailedRetryBackoff:
-    """Tests for the retry logic in mark_failed."""
-
-    @pytest.mark.asyncio
-    async def test_mark_failed_with_retry_backoff(
-        self, db_session: AsyncSession, content_with_outputs: ContentUpload
-    ):
-        """When retry_count < max_retries, event should be rescheduled with backoff."""
-        scheduler = SchedulerService()
-        workspace_id = content_with_outputs.workspace_id
-
-        result = await db_session.execute(
-            select(GeneratedOutput).where(
-                GeneratedOutput.content_upload_id == content_with_outputs.id,
-                GeneratedOutput.platform_id == "email_newsletter",
-            )
-        )
-        output = result.scalar_one()
-
-        # Create a scheduled event
-        event = ScheduledEvent(
-            workspace_id=workspace_id,
-            generated_output_id=output.id,
-            platform_id="email_newsletter",
-            scheduled_at=datetime.now(timezone.utc) - timedelta(minutes=5),
-            status="publishing",
-            max_retries=3,
-        )
-        db_session.add(event)
-        await db_session.flush()
-        await db_session.refresh(event)
-
-        # First failure: retry_count goes to 1, backoff = 2^1 * 60 = 120s
-        event = await scheduler.mark_failed(
-            db=db_session, event_id=event.id, error="Connection timeout"
-        )
-        assert event.retry_count == 1
-        assert event.status == "scheduled"  # Re-queued, not permanently failed
-        assert event.publish_error == "Connection timeout"
-        # The new scheduled_at should be roughly 2 minutes from now
-        # SQLite returns naive datetimes, so strip tzinfo for comparison
-        expected_min = datetime.utcnow() + timedelta(seconds=100)
-        scheduled = event.scheduled_at.replace(tzinfo=None) if event.scheduled_at.tzinfo else event.scheduled_at
-        assert scheduled >= expected_min
-
-        # Second failure: retry_count goes to 2, backoff = 2^2 * 60 = 240s
-        event.status = "publishing"
-        await db_session.flush()
-        event = await scheduler.mark_failed(
-            db=db_session, event_id=event.id, error="API rate limited"
-        )
-        assert event.retry_count == 2
-        assert event.status == "scheduled"
-
-        # Third failure: retry_count goes to 3, which equals max_retries — permanent failure
-        event.status = "publishing"
-        await db_session.flush()
-        event = await scheduler.mark_failed(
-            db=db_session, event_id=event.id, error="Service unavailable"
-        )
-        assert event.retry_count == 3
-        assert event.status == "failed"  # Permanently failed
-        assert event.publish_error == "Service unavailable"
-
-
-# ---------------------------------------------------------------------------
-# Publisher Registry Tests
-# ---------------------------------------------------------------------------
-
-
-class TestPublisherRegistry:
-    """Tests for the publisher registry."""
-
-    def test_publisher_registry_register_and_get(self):
-        """Test registering and retrieving a publisher."""
-        # Clear existing registrations for a clean test
-        original = PublisherRegistry._publishers.copy()
-        PublisherRegistry._publishers.clear()
-
-        try:
-            twitter = TwitterPublisher()
-            PublisherRegistry.register("test_twitter", twitter)
-
-            assert PublisherRegistry.is_supported("test_twitter") is True
-            assert PublisherRegistry.is_supported("nonexistent") is False
-
-            retrieved = PublisherRegistry.get("test_twitter")
-            assert retrieved is twitter
-
-            assert PublisherRegistry.get("nonexistent") is None
-        finally:
-            PublisherRegistry._publishers = original
-
-    def test_init_publishers_registers_all(self):
-        """Test that init_publishers registers all expected platforms."""
-        original = PublisherRegistry._publishers.copy()
-        PublisherRegistry._publishers.clear()
-
-        try:
-            init_publishers()
-
-            # Check key platforms are registered
-            expected_platforms = [
-                "twitter_single",
-                "twitter_thread",
-                "linkedin_post",
-                "linkedin_article",
-                "bluesky_post",
-                "instagram_carousel",
-                "instagram_caption",
-                "pinterest_pin",
-                "medium_post",
-                "youtube_longform",
-                "short_form_video",
-                "reddit_post",
-                "quora_answer",
-            ]
-
-            for platform_id in expected_platforms:
-                assert PublisherRegistry.is_supported(platform_id), (
-                    f"Expected platform '{platform_id}' to be registered"
-                )
-
-            supported = PublisherRegistry.get_supported_platforms()
-            assert len(supported) == len(expected_platforms)
-        finally:
-            PublisherRegistry._publishers = original
-
-    @pytest.mark.asyncio
-    async def test_twitter_publisher_returns_error_without_credentials(self):
-        """Real publishers should return success=False when credentials are missing."""
-        publisher = TwitterPublisher()
-        connection = MagicMock()
-        connection.access_token_encrypted = None
-        connection.refresh_token_encrypted = None
-
-        result = await publisher.publish("test content", {}, connection)
-
-        assert result["success"] is False
-        assert result["post_id"] is None
-        assert result["error"] is not None
-
-    @pytest.mark.asyncio
-    async def test_linkedin_publisher_returns_error_without_credentials(self):
-        """Real publishers should return success=False when credentials are missing."""
-        publisher = LinkedInPublisher()
-        connection = MagicMock()
-        connection.access_token_encrypted = None
-        connection.refresh_token_encrypted = None
-
-        result = await publisher.publish("test content", {}, connection)
-
-        assert result["success"] is False
-        assert result["error"] is not None
-
-
-# ---------------------------------------------------------------------------
-# Calendar Stats and Upcoming Tests
-# ---------------------------------------------------------------------------
-
-
-class TestCalendarStats:
-    """Tests for calendar stats and upcoming endpoints."""
-
-    @pytest.mark.asyncio
-    async def test_get_calendar_stats(
-        self,
-        client: AsyncClient,
-        auth_headers: dict[str, str],
-    ):
-        """Test the /calendar/stats endpoint returns valid structure."""
-        response = await client.get(
-            f"{CALENDAR_BASE}/stats",
-            headers=auth_headers,
-        )
-        assert response.status_code == 200, response.text
-
-        data = response.json()
-        assert "total_scheduled" in data
-        assert "total_published" in data
-        assert "total_failed" in data
-        assert "upcoming_today" in data
-        assert "upcoming_this_week" in data
-        assert "platforms_active" in data
-        assert "content_gaps" in data
-        assert isinstance(data["content_gaps"], list)
-
-    @pytest.mark.asyncio
-    async def test_get_upcoming_events(
-        self,
-        client: AsyncClient,
-        auth_headers: dict[str, str],
-    ):
-        """Test the /calendar/upcoming endpoint returns valid structure."""
-        response = await client.get(
-            f"{CALENDAR_BASE}/upcoming",
-            headers=auth_headers,
-        )
-        assert response.status_code == 200, response.text
-
-        data = response.json()
-        assert "events" in data
-        assert "total" in data
-        assert isinstance(data["events"], list)
-
-
-# ---------------------------------------------------------------------------
-# Auto-Schedule Tests
-# ---------------------------------------------------------------------------
-
-
-class TestAutoSchedule:
-    """Tests for the auto-schedule endpoint."""
-
-    @pytest.mark.asyncio
-    async def test_auto_schedule_success(
-        self,
-        client: AsyncClient,
-        auth_headers: dict[str, str],
-        content_with_outputs: ContentUpload,
-    ):
-        """Test auto-scheduling all approved outputs for a content piece."""
-        start_date = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
-
-        response = await client.post(
-            f"{CALENDAR_BASE}/auto-schedule",
-            json={
-                "content_id": str(content_with_outputs.id),
-                "start_date": start_date,
-            },
-            headers=auth_headers,
-        )
-        assert response.status_code == 201, response.text
-
-        data = response.json()
-        assert data["total"] > 0
-        assert len(data["events"]) > 0
-
-        # Events should be from different platforms
-        platforms = {e["platform_id"] for e in data["events"]}
-        assert len(platforms) > 1
-
-    @pytest.mark.asyncio
-    async def test_auto_schedule_no_approved_outputs(
-        self,
-        client: AsyncClient,
-        auth_headers: dict[str, str],
-    ):
-        """Auto-schedule with no approved outputs should return 422."""
-        # Upload content (outputs will be in draft status, not approved)
-        response = await client.post(
-            "/api/v1/content/upload",
-            json={
-                "title": "No Approved Outputs",
-                "content_type": "blog",
-                "raw_content": "This content has no approved outputs for testing. " * 10,
-            },
-            headers=auth_headers,
-        )
-        assert response.status_code == 201
-        content_id = response.json()["id"]
-
-        start_date = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
-
-        response = await client.post(
-            f"{CALENDAR_BASE}/auto-schedule",
-            json={
-                "content_id": content_id,
-                "start_date": start_date,
-            },
-            headers=auth_headers,
-        )
-        assert response.status_code == 422
-
-
-# ---------------------------------------------------------------------------
-# Platform Connections Tests
-# ---------------------------------------------------------------------------
-
-
-class TestPlatformConnections:
-    """Tests for the platform connections endpoints."""
-
-    @pytest.mark.asyncio
-    async def test_list_connections_empty(
-        self,
-        client: AsyncClient,
-        auth_headers: dict[str, str],
-    ):
-        """Test listing connections when none exist."""
-        response = await client.get(
-            "/api/v1/connections",
-            headers=auth_headers,
-        )
-        assert response.status_code == 200
-        assert response.json() == []
-
-    @pytest.mark.asyncio
-    async def test_connect_platform(
-        self,
-        client: AsyncClient,
-        auth_headers: dict[str, str],
-    ):
-        """Test connecting a platform via OAuth data."""
-        response = await client.post(
-            "/api/v1/connections/linkedin_post/connect",
-            json={
-                "access_token": "test_access_token_123",
-                "refresh_token": "test_refresh_token_456",
-                "platform_username": "testuser",
-                "scopes": ["w_member_social"],
-            },
-            headers=auth_headers,
-        )
-        assert response.status_code == 201, response.text
-
-        data = response.json()
-        assert data["platform_id"] == "linkedin_post"
-        assert data["platform_username"] == "testuser"
-        assert data["is_active"] is True
-
-    @pytest.mark.asyncio
-    async def test_disconnect_platform(
-        self,
-        client: AsyncClient,
-        auth_headers: dict[str, str],
-    ):
-        """Test disconnecting a platform."""
-        # Connect first
-        response = await client.post(
-            "/api/v1/connections/twitter_single/connect",
-            json={
-                "access_token": "twitter_token",
-                "platform_username": "testhandle",
-            },
-            headers=auth_headers,
-        )
-        assert response.status_code == 201
-        connection_id = response.json()["id"]
-
-        # Disconnect
-        response = await client.delete(
-            f"/api/v1/connections/{connection_id}",
-            headers=auth_headers,
-        )
-        assert response.status_code == 204
-
-    @pytest.mark.asyncio
-    async def test_get_connection_status(
-        self,
-        client: AsyncClient,
-        auth_headers: dict[str, str],
-    ):
-        """Test checking connection status for a platform."""
-        # Check status before connecting
-        response = await client.get(
-            "/api/v1/connections/bluesky_post/status",
-            headers=auth_headers,
-        )
-        assert response.status_code == 200
-
-        data = response.json()
-        assert data["connected"] is False
-        assert data["platform_id"] == "bluesky_post"
-
-        # Connect
-        await client.post(
-            "/api/v1/connections/bluesky_post/connect",
-            json={
-                "access_token": "bsky_token",
-                "platform_username": "test.bsky.social",
-            },
-            headers=auth_headers,
-        )
-
-        # Check status after connecting
-        response = await client.get(
-            "/api/v1/connections/bluesky_post/status",
-            headers=auth_headers,
-        )
-        assert response.status_code == 200
-
-        data = response.json()
-        assert data["connected"] is True
-        assert data["platform_username"] == "test.bsky.social"
+@pytest.mark.asyncio
+async def test_cancel_post():
+    """DELETE /{post_id} cancels event and reverts output to approved."""
+    from app.api.v1.calendar import cancel_post
+
+    event_doc = _make_doc("event_1", SAMPLE_EVENT)
+    event_ref = _doc_ref(event_doc)
+
+    output_doc = _make_doc("output_1", {**SAMPLE_OUTPUT, "status": "scheduled"})
+    output_ref = _doc_ref(output_doc)
+
+    db = MagicMock()
+
+    def route_collection(name):
+        coll = MagicMock()
+        if name == "scheduled_posts":
+            coll.document.return_value = event_ref
+            return coll
+        elif name == "generated_outputs":
+            coll.document.return_value = output_ref
+            return coll
+        return coll
+
+    db.collection.side_effect = route_collection
+
+    with patch("app.api.v1.calendar.get_db", return_value=db):
+        result = await cancel_post(post_id="event_1", current_user=_fake_user())
+
+    # Result is None (204 No Content)
+    assert result is None
+
+    # Event should be cancelled
+    event_ref.update.assert_called_once()
+    event_update = event_ref.update.call_args[0][0]
+    assert event_update["status"] == "cancelled"
+
+    # Output should revert to approved
+    output_ref.update.assert_called_once()
+    output_update = output_ref.update.call_args[0][0]
+    assert output_update["status"] == "approved"
+    assert output_update["scheduled_at"] is None

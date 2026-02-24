@@ -1,217 +1,93 @@
-"""Platform connection management API routes."""
+"""Platform connection API routes — Firestore-backed."""
 
-from uuid import UUID
+from datetime import datetime
 
 import httpx
 from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import RedirectResponse
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.database import get_db
+from app.core.encryption import encrypt
+from app.core.firestore import get_db
 from app.middleware.auth import get_current_user
-from app.models.organization import OrganizationMember, Workspace
-from app.models.user import User
-from app.schemas.calendar import (
-    AppPasswordRequest,
-    ConnectPlatformRequest,
-    OAuthAuthorizeResponse,
-    PlatformConnectionResponse,
-    PlatformConnectionStatusResponse,
-)
-from app.services.oauth import OAuthService
-from app.services.platform_connection import PlatformConnectionService
-from app.utils.encryption import encrypt_token
-from app.utils.exceptions import NotFoundError, ValidationError
+from app.services.platforms.base import get_platform_service
+from app.utils.exceptions import NotFoundError
 
 router = APIRouter()
-connection_service = PlatformConnectionService()
-oauth_service = OAuthService()
 settings = get_settings()
 
 
-async def get_user_workspace(user: User, db: AsyncSession) -> Workspace:
-    """Get the user's default workspace (first org's first workspace)."""
-    result = await db.execute(
-        select(OrganizationMember)
-        .where(OrganizationMember.user_id == user.id)
-        .limit(1)
-    )
-    membership = result.scalar_one_or_none()
-    if not membership:
-        raise NotFoundError(
-            message="No organization found",
-            detail="User does not belong to any organization",
-        )
+# ── GET /api/v1/platforms ──────────────────────────────────────────────
 
-    result = await db.execute(
-        select(Workspace)
-        .where(Workspace.organization_id == membership.organization_id)
-        .limit(1)
-    )
-    workspace = result.scalar_one_or_none()
-    if not workspace:
-        raise NotFoundError(
-            message="No workspace found",
-            detail="Organization does not have any workspaces",
-        )
-
-    return workspace
+@router.get("")
+async def list_connections(current_user=Depends(get_current_user)) -> list[dict]:
+    """List all platform connections for the current user (EXCLUDES tokens)."""
+    db = get_db()
+    query = db.collection("connected_platforms").where("user_id", "==", current_user.id)
+    connections = []
+    async for doc in query.stream():
+        data = doc.to_dict()
+        connections.append({
+            "id": doc.id,
+            "platform": data.get("platform"),
+            "platform_user_id": data.get("platform_user_id"),
+            "platform_username": data.get("platform_username"),
+            "is_active": data.get("is_active", False),
+            "token_expires_at": data.get("token_expires_at"),
+            "scopes": data.get("scopes", []),
+            "created_at": data.get("created_at"),
+        })
+    return connections
 
 
-# ---------------------------------------------------------------------------
-# Existing CRUD endpoints
-# ---------------------------------------------------------------------------
+# ── GET /api/v1/platforms/oauth-url?platform=TWITTER ───────────────────
+
+@router.get("/oauth-url")
+async def get_oauth_url(
+    platform: str = Query(...),
+    current_user=Depends(get_current_user),
+) -> dict:
+    """Generate an OAuth authorize URL for a platform."""
+    service = get_platform_service(platform.lower())
+    url = await service.get_auth_url(user_id=current_user.id)
+    return {"authorize_url": url}
 
 
-@router.get("", response_model=list[PlatformConnectionResponse])
-async def list_connections(
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> list[PlatformConnectionResponse]:
-    """List all platform connections for the current workspace."""
-    workspace = await get_user_workspace(current_user, db)
+# ── POST /api/v1/platforms/callback ────────────────────────────────────
 
-    connections = await connection_service.get_connections(
-        db=db,
-        workspace_id=workspace.id,
-    )
-
-    return [PlatformConnectionResponse.model_validate(conn) for conn in connections]
-
-
-@router.post(
-    "/{platform_id}/connect",
-    response_model=PlatformConnectionResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-async def connect_platform(
-    platform_id: str,
-    request_body: ConnectPlatformRequest,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> PlatformConnectionResponse:
-    """Store OAuth connection data for a platform.
-
-    This endpoint is called after the frontend completes the OAuth flow
-    and has the access/refresh tokens to store.
-    """
-    workspace = await get_user_workspace(current_user, db)
-
-    oauth_data = {
-        "platform_user_id": request_body.platform_user_id,
-        "platform_username": request_body.platform_username,
-        "access_token": request_body.access_token,
-        "refresh_token": request_body.refresh_token,
-        "token_expires_at": request_body.token_expires_at,
-        "scopes": request_body.scopes,
-    }
-
-    connection = await connection_service.connect_platform(
-        db=db,
-        workspace_id=workspace.id,
-        platform_id=platform_id,
-        oauth_data=oauth_data,
-    )
-
-    return PlatformConnectionResponse.model_validate(connection)
-
-
-@router.delete(
-    "/{connection_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-)
-async def disconnect_platform(
-    connection_id: UUID,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> None:
-    """Disconnect a platform (soft-delete the connection)."""
-    workspace = await get_user_workspace(current_user, db)
-
-    await connection_service.disconnect_platform(
-        db=db,
-        workspace_id=workspace.id,
-        connection_id=connection_id,
-    )
-
-
-@router.get(
-    "/{platform_id}/status",
-    response_model=PlatformConnectionStatusResponse,
-)
-async def get_connection_status(
-    platform_id: str,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> PlatformConnectionStatusResponse:
-    """Check the connection status for a specific platform."""
-    workspace = await get_user_workspace(current_user, db)
-
-    status_data = await connection_service.get_connection_status(
-        db=db,
-        workspace_id=workspace.id,
-        platform_id=platform_id,
-    )
-
-    return PlatformConnectionStatusResponse(**status_data)
-
-
-# ---------------------------------------------------------------------------
-# OAuth flow endpoints
-# ---------------------------------------------------------------------------
-
-
-@router.get(
-    "/{platform_id}/authorize",
-    response_model=OAuthAuthorizeResponse,
-)
-async def authorize_platform(
-    platform_id: str,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> OAuthAuthorizeResponse:
-    """Generate the OAuth authorize URL for a platform and return it."""
-    workspace = await get_user_workspace(current_user, db)
-
-    url = await oauth_service.generate_authorize_url(
-        platform_id=platform_id,
-        user_id=str(current_user.id),
-        workspace_id=str(workspace.id),
-    )
-
-    return OAuthAuthorizeResponse(authorize_url=url)
+@router.post("/callback")
+async def oauth_callback_post(
+    platform: str = Query(...),
+    code: str = Query(...),
+    state: str = Query(...),
+) -> dict:
+    """Handle OAuth callback — exchange code for tokens and store connection."""
+    service = get_platform_service(platform.lower())
+    return await service.exchange_code(code=code, state=state)
 
 
 @router.get("/callback/{platform_id}")
-async def oauth_callback(
+async def oauth_callback_redirect(
     platform_id: str,
     code: str = Query(default=""),
     state: str = Query(default=""),
     error: str = Query(default=""),
-    db: AsyncSession = Depends(get_db),
 ) -> RedirectResponse:
-    """Handle the OAuth provider callback — exchange code for tokens and redirect to frontend."""
+    """Handle OAuth provider redirect callback — redirect to frontend."""
     frontend_callback = f"{settings.FRONTEND_URL}/oauth/callback"
 
     if error:
         return RedirectResponse(
             url=f"{frontend_callback}?status=error&platform={platform_id}&error={error}"
         )
-
     if not code or not state:
         return RedirectResponse(
             url=f"{frontend_callback}?status=error&platform={platform_id}&error=missing_code_or_state"
         )
 
     try:
-        result = await oauth_service.handle_callback(
-            db=db,
-            platform_id=platform_id,
-            code=code,
-            state=state,
-        )
+        service = get_platform_service(platform_id)
+        result = await service.exchange_code(code=code, state=state)
         username = result.get("platform_username", "")
         return RedirectResponse(
             url=f"{frontend_callback}?status=success&platform={platform_id}&username={username}"
@@ -223,25 +99,71 @@ async def oauth_callback(
         )
 
 
-# ---------------------------------------------------------------------------
-# Bluesky app-password endpoint
-# ---------------------------------------------------------------------------
+# ── DELETE /api/v1/platforms/{platform_id} ─────────────────────────────
+
+@router.delete("/{platform_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def disconnect_platform(
+    platform_id: str,
+    current_user=Depends(get_current_user),
+) -> None:
+    """Disconnect a platform (soft-delete)."""
+    db = get_db()
+    query = (
+        db.collection("connected_platforms")
+        .where("user_id", "==", current_user.id)
+        .where("platform", "==", platform_id)
+        .where("is_active", "==", True)
+        .limit(1)
+    )
+    docs = [doc async for doc in query.stream()]
+    if not docs:
+        raise NotFoundError(
+            message="Connection not found",
+            detail=f"No active connection found for platform '{platform_id}'.",
+        )
+    await docs[0].reference.update({
+        "is_active": False,
+        "updated_at": datetime.utcnow(),
+    })
 
 
-@router.post(
-    "/bluesky/app-password",
-    response_model=PlatformConnectionResponse,
-    status_code=status.HTTP_201_CREATED,
-)
+# ── POST /api/v1/platforms/disconnect-all ──────────────────────────────
+
+@router.post("/disconnect-all", status_code=status.HTTP_200_OK)
+async def disconnect_all(current_user=Depends(get_current_user)) -> dict:
+    """Panic button — disconnect all platforms for the current user."""
+    db = get_db()
+    query = (
+        db.collection("connected_platforms")
+        .where("user_id", "==", current_user.id)
+        .where("is_active", "==", True)
+    )
+    count = 0
+    async for doc in query.stream():
+        await doc.reference.update({
+            "is_active": False,
+            "updated_at": datetime.utcnow(),
+        })
+        count += 1
+    return {"disconnected": count}
+
+
+# ── Bluesky app-password ──────────────────────────────────────────────
+
+from pydantic import BaseModel
+
+
+class AppPasswordRequest(BaseModel):
+    handle: str
+    app_password: str
+
+
+@router.post("/bluesky/app-password", status_code=status.HTTP_201_CREATED)
 async def bluesky_app_password(
     body: AppPasswordRequest,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> PlatformConnectionResponse:
+    current_user=Depends(get_current_user),
+) -> dict:
     """Authenticate to Bluesky via AT Protocol app password."""
-    workspace = await get_user_workspace(current_user, db)
-
-    # Validate credentials against Bluesky PDS
     async with httpx.AsyncClient(timeout=10) as client:
         resp = await client.post(
             "https://bsky.social/xrpc/com.atproto.server.createSession",
@@ -249,27 +171,39 @@ async def bluesky_app_password(
         )
 
     if resp.status_code != 200:
+        from app.utils.exceptions import ValidationError
         raise ValidationError(
             message="Authentication failed",
-            detail="Invalid Bluesky handle or app password. Please check your credentials.",
+            detail="Invalid Bluesky handle or app password.",
         )
 
     session = resp.json()
-    did = session.get("did", "")
-    handle = session.get("handle", body.handle)
+    db = get_db()
+    connection_data = {
+        "user_id": current_user.id,
+        "platform": "bluesky",
+        "platform_user_id": session.get("did", ""),
+        "platform_username": session.get("handle", body.handle),
+        "access_token_encrypted": encrypt(body.app_password),
+        "refresh_token_encrypted": None,
+        "token_expires_at": None,
+        "scopes": [],
+        "is_active": True,
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow(),
+    }
 
-    connection = await connection_service.connect_platform(
-        db=db,
-        workspace_id=workspace.id,
-        platform_id="bluesky",
-        oauth_data={
-            "platform_user_id": did,
-            "platform_username": handle,
-            "access_token": body.app_password,
-            "refresh_token": None,
-            "token_expires_at": None,
-            "scopes": [],
-        },
+    # Upsert
+    query = (
+        db.collection("connected_platforms")
+        .where("user_id", "==", current_user.id)
+        .where("platform", "==", "bluesky")
+        .limit(1)
     )
-
-    return PlatformConnectionResponse.model_validate(connection)
+    existing = [doc async for doc in query.stream()]
+    if existing:
+        await existing[0].reference.update(connection_data)
+        return {**connection_data, "id": existing[0].id}
+    else:
+        ref = await db.collection("connected_platforms").add(connection_data)
+        return {**connection_data, "id": ref[1].id}

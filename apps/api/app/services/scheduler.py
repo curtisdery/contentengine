@@ -58,6 +58,18 @@ DISTRIBUTION_ARC: dict[str, dict] = {
 
 # Recommended posting cadence in days, parsed from platform profile strings.
 # These are rough heuristics extracted from the cadence text.
+# Format release tiers — which formats ship on which day of the distribution arc.
+# Used by the generation engine to prioritise which formats to generate first.
+FORMAT_TIERS: dict[str, list[str]] = {
+    "immediate": ["TWITTER_SINGLE", "LINKEDIN_POST", "BLUESKY_POST"],
+    "day2": ["INSTAGRAM_CAROUSEL", "INSTAGRAM_CAPTION"],
+    "day3": ["EMAIL_NEWSLETTER"],
+    "day5": ["SHORT_FORM_VIDEO_SCRIPT", "YOUTUBE_SCRIPT"],
+    "day7": ["REDDIT_POST", "QUORA_ANSWER"],
+    "day10": ["BLOG_SEO_ARTICLE", "MEDIUM_POST"],
+    "day14": ["LINKEDIN_ARTICLE", "PRESS_RELEASE", "SLIDE_DECK_OUTLINE"],
+}
+
 CADENCE_DAYS: dict[str, int] = {
     "twitter_single": 1,
     "twitter_thread": 3,
