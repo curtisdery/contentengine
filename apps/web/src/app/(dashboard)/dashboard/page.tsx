@@ -1,7 +1,6 @@
 'use client';
 
 import * as React from 'react';
-import Link from 'next/link';
 import {
   Upload,
   FileOutput,
@@ -14,7 +13,6 @@ import {
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/stores/auth-store';
 import { cn } from '@/lib/utils';
 import { callFunction } from '@/lib/cloud-functions';
@@ -103,7 +101,7 @@ function AutopilotWidget() {
   const hasEligible = summary.eligible_not_enabled > 0;
 
   return (
-    <Link href={ROUTES.SETTINGS_AUTOPILOT} className="block group">
+    <a href={ROUTES.SETTINGS_AUTOPILOT} className="block group no-underline">
     <Card
       className={cn(
         'cursor-pointer transition-all duration-300',
@@ -162,7 +160,7 @@ function AutopilotWidget() {
         <ArrowUpRight className="ml-auto h-4 w-4 shrink-0 text-cme-text-muted opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
       </CardContent>
     </Card>
-    </Link>
+    </a>
   );
 }
 
@@ -307,7 +305,7 @@ export default function DashboardPage() {
 
       {/* Next-Step CTA — guides user through the workflow until first publish */}
       {nextStep && (
-        <Link href={nextStep.href} className="block group">
+        <a href={nextStep.href} className="block group no-underline">
           <Card
             glow="primary"
             className="relative overflow-hidden cursor-pointer"
@@ -334,7 +332,7 @@ export default function DashboardPage() {
               </span>
             </CardContent>
           </Card>
-        </Link>
+        </a>
       )}
 
       {/* Recent Activity — show only after user has published content */}
@@ -345,13 +343,13 @@ export default function DashboardPage() {
               <h2 className="text-lg font-semibold text-cme-text">
                 Recent Activity
               </h2>
-              <Link
+              <a
                 href={ROUTES.ANALYTICS}
-                className="inline-flex items-center gap-1 rounded-lg px-3 h-8 text-xs font-medium text-cme-text-muted hover:text-cme-text hover:bg-cme-surface-hover transition-colors"
+                className="inline-flex items-center gap-1 rounded-lg px-3 h-8 text-xs font-medium text-cme-text-muted hover:text-cme-text hover:bg-cme-surface-hover transition-colors no-underline"
               >
                 View Analytics
                 <ArrowUpRight className="h-3 w-3" />
-              </Link>
+              </a>
             </div>
             <div className="grid gap-3 sm:grid-cols-3">
               <div className="rounded-lg bg-cme-surface/50 p-4">
@@ -420,7 +418,7 @@ interface QuickActionCardProps {
 
 function QuickActionCard({ title, description, icon, accentColor, href }: QuickActionCardProps) {
   return (
-    <Link href={href} className="block group">
+    <a href={href} className="block group no-underline">
       <Card className="cursor-pointer hover:border-cme-border-bright transition-all duration-300">
         <CardContent className="flex items-center gap-4 p-5">
           <div
@@ -441,6 +439,6 @@ function QuickActionCard({ title, description, icon, accentColor, href }: QuickA
           <ArrowUpRight className="ml-auto h-4 w-4 shrink-0 text-cme-text-muted opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
         </CardContent>
       </Card>
-    </Link>
+    </a>
   );
 }
