@@ -1,5 +1,5 @@
 /**
- * Analytics API — 5 onCall functions: getOverview, getContentAnalytics, getPlatformAnalytics, getHeatmap, getAudienceIntelligence.
+ * Analytics API — 8 onCall functions.
  */
 
 import { onCall } from "firebase-functions/v2/https";
@@ -270,6 +270,167 @@ export const getAudienceIntelligence = onCall(async (request) => {
       platform_rankings: rankings,
       recommendations: ["Connect more platforms to get audience intelligence insights."],
     };
+  } catch (err) {
+    throw wrapError(err);
+  }
+});
+
+// ─── getContentTypeAnalytics ──────────────────────────────────────────────────
+export const getContentTypeAnalytics = onCall(async (request) => {
+  try {
+    const ctx = await verifyAuth(request);
+    const input = validate(AnalyticsQuerySchema, request.data);
+    const sinceDate = new Date(Date.now() - input.days * 24 * 60 * 60 * 1000);
+    const sinceTs = Timestamp.fromDate(sinceDate);
+
+    // Get outputs grouped by content type
+    const outputsSnap = await db.collection(Collections.GENERATED_OUTPUTS)
+      .where("workspaceId", "==", ctx.workspaceId)
+      .get();
+
+    const typeData: Record<string, { reach: number; engagements: number; count: number }> = {};
+
+    for (const doc of outputsSnap.docs) {
+      const d = doc.data();
+      const contentType = (d.contentType as string) || "unknown";
+      if (!typeData[contentType]) {
+        typeData[contentType] = { reach: 0, engagements: 0, count: 0 };
+      }
+      typeData[contentType].count += 1;
+    }
+
+    // Enrich with analytics snapshots
+    const snapshotsSnap = await db.collection(Collections.ANALYTICS_SNAPSHOTS)
+      .where("workspaceId", "==", ctx.workspaceId)
+      .where("snapshotTime", ">=", sinceTs)
+      .get();
+
+    const outputTypeMap: Record<string, string> = {};
+    for (const doc of outputsSnap.docs) {
+      outputTypeMap[doc.id] = (doc.data().contentType as string) || "unknown";
+    }
+
+    for (const doc of snapshotsSnap.docs) {
+      const d = doc.data();
+      const outputId = d.generatedOutputId as string;
+      const ct = outputTypeMap[outputId];
+      if (ct && typeData[ct]) {
+        typeData[ct].reach += (d.impressions as number) || 0;
+        typeData[ct].engagements += (d.engagements as number) || 0;
+      }
+    }
+
+    return Object.entries(typeData).map(([ct, data]) => ({
+      content_type: ct,
+      avg_engagement_rate: data.reach > 0 ? Math.round((data.engagements / data.reach) * 10000) / 100 : 0,
+      total_reach: data.reach,
+      post_count: data.count,
+      avg_multiplier_score: 0,
+    }));
+  } catch (err) {
+    throw wrapError(err);
+  }
+});
+
+// ─── getHookAnalytics ─────────────────────────────────────────────────────────
+export const getHookAnalytics = onCall(async (request) => {
+  try {
+    const ctx = await verifyAuth(request);
+    validate(AnalyticsQuerySchema, request.data);
+
+    const contentSnap = await db.collection(Collections.CONTENT_UPLOADS)
+      .where("workspaceId", "==", ctx.workspaceId)
+      .get();
+
+    const hookData: Record<string, { reach: number; engagements: number; count: number; bestPlatform: string | null }> = {};
+
+    for (const doc of contentSnap.docs) {
+      const d = doc.data();
+      const hooks = d.hooks as Array<{ type?: string }> | undefined;
+      if (!hooks || !Array.isArray(hooks)) continue;
+      for (const hook of hooks) {
+        const hookType = hook.type || "unknown";
+        if (!hookData[hookType]) {
+          hookData[hookType] = { reach: 0, engagements: 0, count: 0, bestPlatform: null };
+        }
+        hookData[hookType].count += 1;
+      }
+    }
+
+    return Object.entries(hookData).map(([hookType, data]) => ({
+      hook_type: hookType,
+      avg_engagement_rate: data.reach > 0 ? Math.round((data.engagements / data.reach) * 10000) / 100 : 0,
+      total_reach: data.reach,
+      usage_count: data.count,
+      best_platform_for_hook: data.bestPlatform,
+    }));
+  } catch (err) {
+    throw wrapError(err);
+  }
+});
+
+// ─── getContentStrategy ───────────────────────────────────────────────────────
+export const getContentStrategy = onCall(async (request) => {
+  try {
+    const ctx = await verifyAuth(request);
+
+    const suggestions: Array<{
+      type: "topic" | "format" | "timing" | "platform";
+      suggestion: string;
+      confidence: number;
+      data_points: number;
+    }> = [];
+
+    const connectionsSnap = await db.collection(Collections.PLATFORM_CONNECTIONS)
+      .where("workspaceId", "==", ctx.workspaceId)
+      .where("isActive", "==", true)
+      .get();
+
+    if (connectionsSnap.size < 3) {
+      suggestions.push({
+        type: "platform",
+        suggestion: "Connect more platforms to maximize your content reach. You're currently using " + connectionsSnap.size + " platform(s).",
+        confidence: 0.9,
+        data_points: connectionsSnap.size,
+      });
+    }
+
+    const contentCount = (await db.collection(Collections.CONTENT_UPLOADS)
+      .where("workspaceId", "==", ctx.workspaceId).count().get()).data().count;
+
+    if (contentCount < 5) {
+      suggestions.push({
+        type: "topic",
+        suggestion: "Upload more content to build a consistent publishing cadence. Creators who post 3+ times per week see 2x engagement.",
+        confidence: 0.85,
+        data_points: contentCount,
+      });
+    }
+
+    const outputsSnap = await db.collection(Collections.GENERATED_OUTPUTS)
+      .where("workspaceId", "==", ctx.workspaceId).get();
+
+    const approvedCount = outputsSnap.docs.filter((d) => d.data().status === "approved" || d.data().status === "published").length;
+
+    if (outputsSnap.size > 0 && approvedCount / outputsSnap.size < 0.5) {
+      suggestions.push({
+        type: "format",
+        suggestion: "Consider refining your voice profile. Only " + Math.round((approvedCount / outputsSnap.size) * 100) + "% of generated outputs are approved.",
+        confidence: 0.8,
+        data_points: outputsSnap.size,
+      });
+    }
+
+    if (suggestions.length === 0) {
+      suggestions.push({
+        type: "timing",
+        suggestion: "Keep publishing consistently! Check the heatmap above for optimal posting times.",
+        confidence: 0.7,
+        data_points: 0,
+      });
+    }
+
+    return suggestions;
   } catch (err) {
     throw wrapError(err);
   }

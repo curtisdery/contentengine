@@ -560,12 +560,12 @@ export default function AnalyticsPage() {
     data: platformPerfRaw.data?.platforms ?? null,
   };
   const contentTypes = useCallable<{ days: number }, ContentTypePerformanceResponse[]>(
-    'getContentAnalytics',
+    'getContentTypeAnalytics',
     { days: 30 },
     { delayMs: 400 }
   );
   const hooks = useCallable<{ days: number }, HookPerformanceResponse[]>(
-    'getContentAnalytics',
+    'getHookAnalytics',
     { days: 30 },
     { delayMs: 600 }
   );
@@ -584,7 +584,7 @@ export default function AnalyticsPage() {
     { delayMs: 1000 }
   );
   const strategy = useCallable<Record<string, unknown>, ContentStrategySuggestion[]>(
-    'getAudienceIntelligence',
+    'getContentStrategy',
     {},
     { delayMs: 1200 }
   );

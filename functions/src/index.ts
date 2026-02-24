@@ -66,13 +66,16 @@ export {
   getCalendarStats,
 } from "./api/calendar.js";
 
-// ─── API: Analytics (5 onCall) ───────────────────────────────────────────────
+// ─── API: Analytics (8 onCall) ───────────────────────────────────────────────
 export {
   getOverview,
   getContentAnalytics,
   getPlatformAnalytics,
   getHeatmap,
   getAudienceIntelligence,
+  getContentTypeAnalytics,
+  getHookAnalytics,
+  getContentStrategy,
 } from "./api/analytics.js";
 
 // ─── API: Connections (4 onCall + 1 onRequest) ──────────────────────────────
