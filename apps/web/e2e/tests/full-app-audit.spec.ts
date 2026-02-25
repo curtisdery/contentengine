@@ -113,8 +113,8 @@ test.describe('Landing Page', () => {
     await expect(page.getByText('PANDO').first()).toBeVisible({ timeout: 10000 });
     await expect(page.getByRole('link', { name: 'Log in' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Free' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Creator' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Pro' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Growth' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Pro', exact: true })).toBeVisible();
     await page.screenshot({ path: '/tmp/audit-landing.png', fullPage: true });
   });
 
@@ -276,7 +276,7 @@ test.describe('Authenticated App (real backend)', () => {
     await page.goto('/dashboard');
     await expect(page.getByText(/welcome/i)).toBeVisible({ timeout: 15000 });
 
-    await page.getByRole('button', { name: 'Get Started' }).click();
+    await page.getByText('Get Started').click();
     await page.waitForURL('**/content/upload', { timeout: 5000 });
     expect(page.url()).toContain('/content/upload');
   });
@@ -431,7 +431,7 @@ test.describe('Authenticated App (real backend)', () => {
 
     await expect(page.getByText(/Plan$/)).toBeVisible();
     await expect(page.getByRole('button', { name: 'Manage Subscription' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Upgrade to Pro' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Upgrade to Growth' })).toBeVisible();
     await expect(page.getByText('Connected Platforms')).toBeVisible();
     await expect(page.getByText('Autopilot')).toBeVisible();
     await expect(page.getByRole('button', { name: 'View all security settings' })).toBeVisible();

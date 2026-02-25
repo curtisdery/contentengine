@@ -51,8 +51,8 @@ test.describe('Upload Flow', () => {
     await page.goto('/dashboard');
     await expect(page.getByText(/welcome/i)).toBeVisible({ timeout: 10000 });
 
-    // Click the "Get Started" button
-    await page.getByRole('button', { name: 'Get Started' }).click();
+    // Click the "Get Started" link (rendered as <a> wrapping a <span>)
+    await page.getByText('Get Started').click();
 
     await page.waitForURL('**/content/upload', { timeout: 5000 });
     expect(page.url()).toContain('/content/upload');

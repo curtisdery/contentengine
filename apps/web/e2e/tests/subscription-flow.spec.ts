@@ -51,7 +51,7 @@ test.describe('Subscription Flow', () => {
     await expect(page.getByText('Free Plan')).toBeVisible({ timeout: 10000 });
 
     await expect(page.getByRole('button', { name: 'Manage Subscription' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Upgrade to Pro' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Upgrade to Growth' })).toBeVisible();
   });
 
   test('Manage Subscription button calls billing portal API', async ({ page }) => {
@@ -72,18 +72,18 @@ test.describe('Subscription Flow', () => {
     expect(page.url()).toContain('billing.stripe.com/test-portal');
   });
 
-  test('Upgrade to Pro button calls billing checkout API', async ({ page }) => {
+  test('Upgrade to Growth button calls billing checkout API', async ({ page }) => {
     await setupFreeUser(page);
 
     await page.goto('/settings');
-    await expect(page.getByRole('button', { name: 'Upgrade to Pro' })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('button', { name: 'Upgrade to Growth' })).toBeVisible({ timeout: 10000 });
 
     // Intercept Stripe checkout redirect with a fulfilled response
     await page.route('https://checkout.stripe.com/**', (route) =>
       route.fulfill({ status: 200, contentType: 'text/html', body: '<html><body>Stripe Checkout</body></html>' })
     );
 
-    await page.getByRole('button', { name: 'Upgrade to Pro' }).click();
+    await page.getByRole('button', { name: 'Upgrade to Growth' }).click();
 
     // The mock createCheckout returns checkout_url, and the handler navigates to it
     await page.waitForURL('**/checkout.stripe.com/**', { timeout: 5000 });
