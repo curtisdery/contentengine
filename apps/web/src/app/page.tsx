@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth-store';
 import { ROUTES } from '@/lib/constants';
+import { callFunction } from '@/lib/cloud-functions';
 import {
   Upload,
   Dna,
@@ -16,6 +17,9 @@ import {
   ChevronDown,
   Twitter,
   MessageCircle,
+  Mail,
+  Plus,
+  Minus,
 } from 'lucide-react';
 
 /* ─────────────────────────── constants ─────────────────────────── */
@@ -39,6 +43,34 @@ const PLATFORMS = [
   { name: 'Blog Summary', emoji: '📝' },
   { name: 'LinkedIn Newsletter', emoji: '📮' },
   { name: 'Discord', emoji: '💬' },
+];
+
+const FAQ_ITEMS = [
+  {
+    question: 'What types of content can I upload?',
+    answer:
+      'Pandocast accepts blog posts, podcast episodes, YouTube videos, newsletters, and long-form text. Upload a URL, paste text, or drop a file — we handle the rest.',
+  },
+  {
+    question: 'How does Pandocast preserve my voice?',
+    answer:
+      'When you upload content, our AI analyzes your writing patterns, tone, vocabulary, and style. It creates a voice profile that ensures every generated post sounds like you — not a generic AI.',
+  },
+  {
+    question: 'Can I edit posts before publishing?',
+    answer:
+      'Absolutely. Every generated post is fully editable. Review, tweak, approve, or regenerate any post before it goes live. You always have final say.',
+  },
+  {
+    question: 'What does the free tier include?',
+    answer:
+      'The free tier gives you 3 uploads per month across 5 platforms with basic voice matching. No credit card required, and it\'s free forever — not a trial.',
+  },
+  {
+    question: 'How is this different from ChatGPT or Jasper?',
+    answer:
+      'Generic AI tools write from scratch with a default tone. Pandocast transforms your existing content, preserving your voice and generating platform-native formats — tweets with hooks, LinkedIn posts with professional formatting, Instagram captions with hashtags.',
+  },
 ];
 
 
@@ -68,6 +100,38 @@ function useInView(threshold = 0.15) {
 }
 
 /* ──────────────────── helper: email form hook ──────────────────── */
+
+function useEmailCapture() {
+  const [email, setEmail] = useState('');
+  const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [message, setMessage] = useState('');
+
+  const submit = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim() || status === 'loading') return;
+
+    setStatus('loading');
+    try {
+      const result = await callFunction<{ email: string }, { success: boolean; message: string }>(
+        'captureEmail',
+        { email: email.trim() }
+      );
+      setStatus('success');
+      setMessage(result.message);
+      setEmail('');
+    } catch {
+      setStatus('error');
+      setMessage('Something went wrong. Try again.');
+    }
+  }, [email, status]);
+
+  const reset = useCallback(() => {
+    setStatus('idle');
+    setMessage('');
+  }, []);
+
+  return { email, setEmail, status, message, submit, reset };
+}
 
 /* ═══════════════════════════════════════════════════════════════════
    MAIN PAGE COMPONENT
@@ -114,8 +178,28 @@ export default function LandingPage() {
       <MultiplierSection />
       <PandoStorySection />
       <PricingSection />
+      <FAQSection />
       <FinalCTASection />
       <Footer />
+
+      {/* FAQ JSON-LD */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'FAQPage',
+            mainEntity: FAQ_ITEMS.map((item) => ({
+              '@type': 'Question',
+              name: item.question,
+              acceptedAnswer: {
+                '@type': 'Answer',
+                text: item.answer,
+              },
+            })),
+          }),
+        }}
+      />
     </main>
   );
 }
@@ -164,6 +248,12 @@ function Nav() {
               {label}
             </button>
           ))}
+          <a
+            href={ROUTES.BLOG}
+            className="text-sm text-cme-text-muted transition-colors hover:text-cme-text"
+          >
+            Blog
+          </a>
         </div>
         <div className="flex items-center gap-3">
           <a
@@ -190,6 +280,7 @@ function Nav() {
 
 function HeroSection() {
   const [mounted, setMounted] = useState(false);
+  const emailCapture = useEmailCapture();
 
   useEffect(() => {
     const t = setTimeout(() => setMounted(true), 100);
@@ -299,9 +390,42 @@ function HeroSection() {
           </a>
         </div>
 
+        {/* Email capture */}
+        <div
+          className={`mb-6 w-full max-w-md transition-all duration-700 delay-500 ${
+            mounted ? 'translate-y-0 opacity-100' : 'translate-y-6 opacity-0'
+          }`}
+        >
+          {emailCapture.status === 'success' ? (
+            <p className="text-sm text-cme-secondary">{emailCapture.message}</p>
+          ) : (
+            <form onSubmit={emailCapture.submit} className="flex gap-2">
+              <input
+                type="email"
+                value={emailCapture.email}
+                onChange={(e) => emailCapture.setEmail(e.target.value)}
+                placeholder="your@email.com"
+                required
+                className="h-10 flex-1 rounded-lg border border-cme-border bg-cme-surface/60 px-4 text-sm text-cme-text placeholder:text-cme-text-muted/50 backdrop-blur-sm transition-colors focus:border-cme-primary focus:outline-none"
+              />
+              <button
+                type="submit"
+                disabled={emailCapture.status === 'loading'}
+                className="flex h-10 items-center gap-2 rounded-lg border border-cme-border bg-cme-surface/60 px-4 text-sm font-medium text-cme-text-muted backdrop-blur-sm transition-all hover:border-cme-border-bright hover:text-cme-text disabled:opacity-50"
+              >
+                <Mail className="h-3.5 w-3.5" />
+                Notify me
+              </button>
+            </form>
+          )}
+          {emailCapture.status === 'error' && (
+            <p className="mt-2 text-xs text-red-400">{emailCapture.message}</p>
+          )}
+        </div>
+
         {/* Social proof */}
         <p
-          className={`flex items-center gap-2 text-sm text-cme-text-muted transition-all duration-700 delay-500 ${
+          className={`flex items-center gap-2 text-sm text-cme-text-muted transition-all duration-700 delay-[600ms] ${
             mounted ? 'translate-y-0 opacity-100' : 'translate-y-6 opacity-0'
           }`}
         >
@@ -974,11 +1098,76 @@ function PricingSection() {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   7. FINAL CTA
+   7. FAQ
+   ═══════════════════════════════════════════════════════════════════ */
+
+function FAQSection() {
+  const { ref, isVisible } = useInView();
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
+
+  return (
+    <section id="faq" className="relative py-28 px-6" ref={ref}>
+      <div className="mx-auto max-w-3xl">
+        {/* Section header */}
+        <div
+          className={`mb-12 text-center transition-all duration-700 ${
+            isVisible ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0'
+          }`}
+        >
+          <p className="mb-3 text-sm font-medium uppercase tracking-widest text-cme-secondary">
+            FAQ
+          </p>
+          <h2 className="text-3xl font-bold text-cme-text md:text-4xl">
+            Common <span className="gradient-text">questions</span>
+          </h2>
+        </div>
+
+        {/* FAQ items */}
+        <div className="space-y-3">
+          {FAQ_ITEMS.map((item, i) => {
+            const isOpen = openIndex === i;
+            return (
+              <div
+                key={i}
+                className={`rounded-xl border border-cme-border bg-cme-surface/50 backdrop-blur-sm transition-all duration-700 ${
+                  isVisible ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0'
+                } ${isOpen ? 'border-cme-border-bright' : 'hover:border-cme-border-bright'}`}
+                style={{ transitionDelay: isVisible ? `${i * 80 + 200}ms` : '0ms' }}
+              >
+                <button
+                  onClick={() => setOpenIndex(isOpen ? null : i)}
+                  className="flex w-full items-center justify-between px-6 py-5 text-left"
+                >
+                  <span className="pr-4 text-sm font-medium text-cme-text">{item.question}</span>
+                  {isOpen ? (
+                    <Minus className="h-4 w-4 flex-shrink-0 text-cme-text-muted" />
+                  ) : (
+                    <Plus className="h-4 w-4 flex-shrink-0 text-cme-text-muted" />
+                  )}
+                </button>
+                <div
+                  className={`overflow-hidden transition-all duration-300 ${
+                    isOpen ? 'max-h-60 pb-5' : 'max-h-0'
+                  }`}
+                >
+                  <p className="px-6 text-sm leading-relaxed text-cme-text-muted">{item.answer}</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   8. FINAL CTA
    ═══════════════════════════════════════════════════════════════════ */
 
 function FinalCTASection() {
   const { ref, isVisible } = useInView();
+  const emailCapture = useEmailCapture();
 
   return (
     <section className="relative py-28 px-6" ref={ref}>
@@ -1023,6 +1212,35 @@ function FinalCTASection() {
               </a>
             </div>
 
+            {/* Email capture */}
+            <div className="mx-auto mb-6 max-w-sm">
+              {emailCapture.status === 'success' ? (
+                <p className="text-sm text-cme-secondary">{emailCapture.message}</p>
+              ) : (
+                <form onSubmit={emailCapture.submit} className="flex gap-2">
+                  <input
+                    type="email"
+                    value={emailCapture.email}
+                    onChange={(e) => emailCapture.setEmail(e.target.value)}
+                    placeholder="your@email.com"
+                    required
+                    className="h-10 flex-1 rounded-lg border border-cme-border bg-cme-bg/60 px-4 text-sm text-cme-text placeholder:text-cme-text-muted/50 transition-colors focus:border-cme-primary focus:outline-none"
+                  />
+                  <button
+                    type="submit"
+                    disabled={emailCapture.status === 'loading'}
+                    className="flex h-10 items-center gap-2 rounded-lg border border-cme-border bg-cme-bg/60 px-4 text-sm font-medium text-cme-text-muted transition-all hover:border-cme-border-bright hover:text-cme-text disabled:opacity-50"
+                  >
+                    <Mail className="h-3.5 w-3.5" />
+                    Notify me
+                  </button>
+                </form>
+              )}
+              {emailCapture.status === 'error' && (
+                <p className="mt-2 text-xs text-red-400">{emailCapture.message}</p>
+              )}
+            </div>
+
             <p className="text-sm text-cme-text-muted">
               No credit card required. Free tier forever.
             </p>
@@ -1034,44 +1252,132 @@ function FinalCTASection() {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   8. FOOTER
+   9. FOOTER
    ═══════════════════════════════════════════════════════════════════ */
 
 function Footer() {
+  const scrollTo = (id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
+  };
+
   return (
-    <footer className="border-t border-cme-border px-6 py-12">
-      <div className="mx-auto flex max-w-5xl flex-col items-center gap-6 md:flex-row md:justify-between">
-        {/* Brand */}
-        <div className="flex flex-col items-center gap-2 md:items-start">
-          <span className="gradient-text text-lg font-bold tracking-wider">PANDOCAST</span>
-          <p className="text-xs text-cme-text-muted">Made with ambition in San Francisco</p>
+    <footer className="border-t border-cme-border px-6 py-16">
+      <div className="mx-auto max-w-5xl">
+        {/* 4-column grid */}
+        <div className="grid gap-10 sm:grid-cols-2 md:grid-cols-4">
+          {/* Brand column */}
+          <div className="sm:col-span-2 md:col-span-1">
+            <span className="gradient-text text-lg font-bold tracking-wider">PANDOCAST</span>
+            <p className="mt-3 text-sm leading-relaxed text-cme-text-muted">
+              AI content multiplier that transforms one upload into 18 platform-native posts in your voice.
+            </p>
+          </div>
+
+          {/* Product column */}
+          <div>
+            <h4 className="mb-4 text-xs font-semibold uppercase tracking-widest text-cme-text">
+              Product
+            </h4>
+            <ul className="space-y-2.5">
+              {[
+                { label: 'How it Works', action: () => scrollTo('how-it-works') },
+                { label: 'Platforms', action: () => scrollTo('platforms') },
+                { label: 'Pricing', action: () => scrollTo('pricing') },
+                { label: 'Blog', href: ROUTES.BLOG },
+              ].map((item) => (
+                <li key={item.label}>
+                  {'href' in item ? (
+                    <a
+                      href={item.href}
+                      className="text-sm text-cme-text-muted transition-colors hover:text-cme-text"
+                    >
+                      {item.label}
+                    </a>
+                  ) : (
+                    <button
+                      onClick={item.action}
+                      className="text-sm text-cme-text-muted transition-colors hover:text-cme-text"
+                    >
+                      {item.label}
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Company column */}
+          <div>
+            <h4 className="mb-4 text-xs font-semibold uppercase tracking-widest text-cme-text">
+              Company
+            </h4>
+            <ul className="space-y-2.5">
+              {[
+                { label: 'Our Story', action: () => scrollTo('story') },
+                { label: 'Privacy', href: '/privacy' },
+                { label: 'Terms', href: '/terms' },
+                { label: 'Contact', href: 'mailto:hello@pandocast.ai' },
+              ].map((item) => (
+                <li key={item.label}>
+                  {'action' in item ? (
+                    <button
+                      onClick={item.action}
+                      className="text-sm text-cme-text-muted transition-colors hover:text-cme-text"
+                    >
+                      {item.label}
+                    </button>
+                  ) : (
+                    <a
+                      href={item.href}
+                      className="text-sm text-cme-text-muted transition-colors hover:text-cme-text"
+                    >
+                      {item.label}
+                    </a>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Connect column */}
+          <div>
+            <h4 className="mb-4 text-xs font-semibold uppercase tracking-widest text-cme-text">
+              Connect
+            </h4>
+            <ul className="space-y-2.5">
+              <li>
+                <a
+                  href="https://twitter.com/pandocast"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 text-sm text-cme-text-muted transition-colors hover:text-cme-text"
+                >
+                  <Twitter className="h-4 w-4" />
+                  Twitter / X
+                </a>
+              </li>
+              <li>
+                <a
+                  href="mailto:hello@pandocast.ai"
+                  className="flex items-center gap-2 text-sm text-cme-text-muted transition-colors hover:text-cme-text"
+                >
+                  <MessageCircle className="h-4 w-4" />
+                  hello@pandocast.ai
+                </a>
+              </li>
+            </ul>
+          </div>
         </div>
 
-        {/* Links */}
-        <div className="flex items-center gap-6 text-sm text-cme-text-muted">
-          <a href="/privacy" className="transition-colors hover:text-cme-text">
-            Privacy
-          </a>
-          <a href="/terms" className="transition-colors hover:text-cme-text">
-            Terms
-          </a>
-          <a
-            href="https://twitter.com/pandocast"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="transition-colors hover:text-cme-text"
-          >
-            <Twitter className="h-4 w-4" />
-          </a>
-          <a href="mailto:hello@pandocast.ai" className="transition-colors hover:text-cme-text">
-            <MessageCircle className="h-4 w-4" />
-          </a>
+        {/* Bottom bar */}
+        <div className="mt-12 flex flex-col items-center gap-3 border-t border-cme-border pt-8 md:flex-row md:justify-between">
+          <p className="text-xs text-cme-text-muted">
+            &copy; 2026 Pandocast. All rights reserved.
+          </p>
+          <p className="text-xs text-cme-text-muted">
+            Made with ambition in San Francisco
+          </p>
         </div>
-
-        {/* Copyright */}
-        <p className="text-xs text-cme-text-muted">
-          &copy; 2026 Pandocast. All rights reserved.
-        </p>
       </div>
     </footer>
   );

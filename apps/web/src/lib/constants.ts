@@ -22,6 +22,7 @@ export const ROUTES = {
   SETTINGS_AUTOPILOT: '/settings/autopilot',
   SETTINGS_SECURITY: '/settings/security',
   OAUTH_CALLBACK: '/oauth/callback',
+  BLOG: '/blog',
 } as const;
 
 export const TOAST_DURATION = 5000;

@@ -34,9 +34,60 @@ export const metadata: Metadata = {
   alternates: {
     canonical: 'https://pandocast.ai',
   },
-  icons: {
-    icon: '/favicon.ico',
-  },
+};
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'Organization',
+      name: 'Pandocast',
+      url: 'https://pandocast.ai',
+      logo: 'https://pandocast.ai/opengraph-image',
+      sameAs: ['https://twitter.com/pandocast'],
+      description:
+        'AI content multiplier that transforms one upload into 18 platform-native posts — preserving your voice across every channel.',
+    },
+    {
+      '@type': 'SoftwareApplication',
+      name: 'Pandocast',
+      url: 'https://pandocast.ai',
+      applicationCategory: 'BusinessApplication',
+      operatingSystem: 'Web',
+      description:
+        'Upload once. Pando everywhere. One upload becomes 18 platform-native posts in your voice.',
+      offers: [
+        {
+          '@type': 'Offer',
+          name: 'Free',
+          price: '0',
+          priceCurrency: 'USD',
+          description: '3 uploads/month, 5 platforms, basic voice matching',
+        },
+        {
+          '@type': 'Offer',
+          name: 'Growth',
+          price: '29',
+          priceCurrency: 'USD',
+          description: '25 uploads/month, all 18 platforms, brand voice profiles, content calendar',
+        },
+        {
+          '@type': 'Offer',
+          name: 'Pro',
+          price: '79',
+          priceCurrency: 'USD',
+          description: 'Unlimited uploads, autopilot scheduling, A/B testing, full analytics, API access',
+        },
+      ],
+    },
+    {
+      '@type': 'WebSite',
+      name: 'Pandocast',
+      url: 'https://pandocast.ai',
+      description:
+        'AI content multiplier that transforms one upload into 18 platform-native posts in your voice.',
+    },
+  ],
 };
 
 export default function RootLayout({
@@ -46,6 +97,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
+      <head>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
+      </head>
       <body className="min-h-screen bg-cme-bg text-cme-text antialiased">
         <FirebaseAuthProvider>
           <Suspense>

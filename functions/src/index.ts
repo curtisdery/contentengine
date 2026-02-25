@@ -2,8 +2,8 @@
  * Pandocast Cloud Functions — main entry point.
  * Re-exports all functions for Firebase discovery.
  *
- * Total: 78 Cloud Functions
- *   - 64 onCall (client-facing API)
+ * Total: 79 Cloud Functions
+ *   - 65 onCall (client-facing API)
  *   - 4 onRequest (tasks + webhooks)
  *   - 6 onSchedule (cron jobs)
  *   - 1 Firestore trigger
@@ -141,6 +141,9 @@ export { recalcScores } from "./scheduled/recalcScores.js";
 export { trendDetection } from "./scheduled/trendDetection.js";
 export { cleanup } from "./scheduled/cleanup.js";
 export { syncFollowers } from "./scheduled/syncFollowers.js";
+
+// ─── API: Waitlist (1 onCall) ───────────────────────────────────────────────
+export { captureEmail } from "./api/waitlist.js";
 
 // ─── Firestore Triggers (1) ─────────────────────────────────────────────────
 export { streamToBigQuery } from "./triggers/bigquery.js";

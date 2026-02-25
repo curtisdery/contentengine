@@ -3,9 +3,9 @@ import "../helpers/setup.js";
 import { Collections } from "../../shared/collections.js";
 
 describe("Collections", () => {
-  it("has exactly 16 collection entries", () => {
+  it("has exactly 17 collection entries", () => {
     const keys = Object.keys(Collections);
-    expect(keys).toHaveLength(16);
+    expect(keys).toHaveLength(17);
   });
 
   it("USERS maps to 'users'", () => {
@@ -91,6 +91,7 @@ describe("Collections", () => {
       "auditLogs",
       "notifications",
       "invites",
+      "waitlistEmails",
     ];
     expect(values.sort()).toEqual(expected.sort());
   });

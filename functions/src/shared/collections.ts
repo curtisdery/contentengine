@@ -17,6 +17,7 @@ export const Collections = {
   AUDIT_LOGS: "auditLogs",
   NOTIFICATIONS: "notifications",
   INVITES: "invites",
+  WAITLIST_EMAILS: "waitlistEmails",
 } as const;
 
 export type CollectionName = (typeof Collections)[keyof typeof Collections];
