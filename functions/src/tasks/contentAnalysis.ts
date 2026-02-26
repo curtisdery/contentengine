@@ -66,8 +66,8 @@ export const taskContentAnalysis = onRequest({ secrets: [ANTHROPIC_API_KEY] }, a
         status: "failed",
         updatedAt: FieldValue.serverTimestamp(),
       });
-    } catch {
-      // ignore update failure
+    } catch (updateErr) {
+      console.error("Failed to update content status to failed:", updateErr);
     }
 
     res.status(500).json({ error: err instanceof Error ? err.message : "Internal error" });

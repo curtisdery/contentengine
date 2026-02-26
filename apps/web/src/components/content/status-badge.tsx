@@ -7,6 +7,10 @@ interface StatusBadgeProps {
 }
 
 const statusConfig: Record<string, { label: string; className: string; pulse?: boolean; glow?: boolean }> = {
+  pending: {
+    label: 'Pending',
+    className: 'bg-cme-text-muted/20 text-cme-text-muted border-cme-text-muted/30',
+  },
   uploaded: {
     label: 'Uploaded',
     className: 'bg-cme-text-muted/20 text-cme-text-muted border-cme-text-muted/30',

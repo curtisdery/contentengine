@@ -67,7 +67,7 @@ export const createContent = onCall({ secrets: [ANTHROPIC_API_KEY] }, async (req
       try {
         await docRef.update({ status: "analyzing" });
         await enqueueTask({
-          queue: "content-analysis",
+          queue: "content-processing",
           url: getTaskHandlerUrl("taskContentAnalysis"),
           payload: {
             contentId: docRef.id,
@@ -76,7 +76,7 @@ export const createContent = onCall({ secrets: [ANTHROPIC_API_KEY] }, async (req
         });
       } catch (taskErr) {
         console.error("Failed to enqueue content analysis:", taskErr);
-        // Don't fail the create — the task can be retried manually
+        await docRef.update({ status: "pending" });
       }
     }
 
@@ -202,17 +202,23 @@ export const triggerGeneration = onCall({ secrets: [ANTHROPIC_API_KEY] }, async 
     await docRef.update({ status: "generating", updatedAt: FieldValue.serverTimestamp() });
 
     // Enqueue output generation task
-    await enqueueTask({
-      queue: "output-generation",
-      url: getTaskHandlerUrl("taskOutputGeneration"),
-      payload: {
-        contentId: docRef.id,
-        workspaceId: ctx.workspaceId,
-        voiceProfileId: input.voice_profile_id || null,
-        selectedPlatforms: input.selected_platforms || null,
-        emphasisNotes: input.emphasis_notes || null,
-      },
-    });
+    try {
+      await enqueueTask({
+        queue: "content-processing",
+        url: getTaskHandlerUrl("taskOutputGeneration"),
+        payload: {
+          contentId: docRef.id,
+          workspaceId: ctx.workspaceId,
+          voiceProfileId: input.voice_profile_id || null,
+          selectedPlatforms: input.selected_platforms || null,
+          emphasisNotes: input.emphasis_notes || null,
+        },
+      });
+    } catch (taskErr) {
+      console.error("Failed to enqueue output generation:", taskErr);
+      await docRef.update({ status: "analyzed", updatedAt: FieldValue.serverTimestamp() });
+      throw taskErr;
+    }
 
     return { success: true, message: "Generation started. Outputs will appear shortly." };
   } catch (err) {
@@ -235,16 +241,23 @@ export const reanalyzeContent = onCall({ secrets: [ANTHROPIC_API_KEY] }, async (
     const data = snap.data() as Record<string, unknown>;
     if (data.workspaceId !== ctx.workspaceId) throw new NotFoundError("Content not found");
 
+    const previousStatus = data.status as string;
     await docRef.update({ status: "analyzing", updatedAt: FieldValue.serverTimestamp() });
 
-    await enqueueTask({
-      queue: "content-analysis",
-      url: getTaskHandlerUrl("taskContentAnalysis"),
-      payload: {
-        contentId: docRef.id,
-        workspaceId: ctx.workspaceId,
-      },
-    });
+    try {
+      await enqueueTask({
+        queue: "content-processing",
+        url: getTaskHandlerUrl("taskContentAnalysis"),
+        payload: {
+          contentId: docRef.id,
+          workspaceId: ctx.workspaceId,
+        },
+      });
+    } catch (taskErr) {
+      console.error("Failed to enqueue content re-analysis:", taskErr);
+      await docRef.update({ status: previousStatus, updatedAt: FieldValue.serverTimestamp() });
+      throw taskErr;
+    }
 
     return { success: true, message: "Content re-analysis started." };
   } catch (err) {

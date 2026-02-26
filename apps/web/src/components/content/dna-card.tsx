@@ -151,7 +151,7 @@ function DNACard({ dna, isLoading, selectedHookIndex, onSelectHook }: DNACardPro
     return <DNACardSkeleton />;
   }
 
-  const sortedPlatforms = [...dna.suggested_platforms].sort(
+  const sortedPlatforms = [...(dna.suggested_platforms ?? [])].sort(
     (a, b) => b.fit_score - a.fit_score
   );
 
@@ -181,7 +181,7 @@ function DNACard({ dna, isLoading, selectedHookIndex, onSelectHook }: DNACardPro
         </CardHeader>
         <CardContent>
           <div className="space-y-5">
-            {dna.key_points.map((point, index) => {
+            {(dna.key_points ?? []).map((point, index) => {
               const strengthPercent = Math.round(point.strength * 100);
               return (
                 <div key={index} className="space-y-2">
@@ -221,7 +221,7 @@ function DNACard({ dna, isLoading, selectedHookIndex, onSelectHook }: DNACardPro
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-2">
-            {dna.best_hooks.map((hook, index) => {
+            {(dna.best_hooks ?? []).map((hook, index) => {
               const isSelected = selectedHookIndex === index;
               return (
                 <button
@@ -267,14 +267,14 @@ function DNACard({ dna, isLoading, selectedHookIndex, onSelectHook }: DNACardPro
       </Card>
 
       {/* Quotable Moments */}
-      {dna.quotable_moments.length > 0 && (
+      {(dna.quotable_moments ?? []).length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>Quotable Moments</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {dna.quotable_moments.map((quote, index) => (
+              {(dna.quotable_moments ?? []).map((quote, index) => (
                 <div
                   key={index}
                   className="group flex items-start gap-3 rounded-lg border border-cme-border bg-cme-surface/50 p-4 backdrop-blur-sm transition-colors hover:border-cme-border-bright"
@@ -292,14 +292,14 @@ function DNACard({ dna, isLoading, selectedHookIndex, onSelectHook }: DNACardPro
       )}
 
       {/* Emotional Arc */}
-      {dna.emotional_arc.length > 0 && (
+      {(dna.emotional_arc ?? []).length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>Emotional Arc</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-end gap-1 overflow-x-auto pb-2">
-              {dna.emotional_arc.map((segment, index) => {
+              {(dna.emotional_arc ?? []).map((segment, index) => {
                 const height = Math.max(segment.intensity * 100, 20);
                 const colorClass =
                   toneColors[segment.tone.toLowerCase()] || 'bg-cme-primary/70';
@@ -339,7 +339,7 @@ function DNACard({ dna, isLoading, selectedHookIndex, onSelectHook }: DNACardPro
             {/* Legend */}
             <div className="mt-4 flex flex-wrap gap-3 border-t border-cme-border pt-4">
               {Object.entries(toneColors).map(([tone, color]) => {
-                const isPresent = dna.emotional_arc.some(
+                const isPresent = (dna.emotional_arc ?? []).some(
                   (s) => s.tone.toLowerCase() === tone
                 );
                 if (!isPresent) return null;

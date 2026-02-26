@@ -28,6 +28,34 @@ const EMPTY_DNA = {
   suggested_platforms: [],
 };
 
+function sanitizeDNA(raw: Record<string, unknown>): Record<string, unknown> {
+  return {
+    core_idea: typeof raw.core_idea === "string" ? raw.core_idea : "",
+    key_points: Array.isArray(raw.key_points) ? raw.key_points : [],
+    best_hooks: Array.isArray(raw.best_hooks) ? raw.best_hooks : [],
+    quotable_moments: Array.isArray(raw.quotable_moments) ? raw.quotable_moments : [],
+    emotional_arc: Array.isArray(raw.emotional_arc) ? raw.emotional_arc : [],
+    content_type_classification:
+      typeof raw.content_type_classification === "string"
+        ? raw.content_type_classification
+        : "unknown",
+    suggested_platforms: Array.isArray(raw.suggested_platforms) ? raw.suggested_platforms : [],
+  };
+}
+
+function getContentTypeHint(contentType: string): string {
+  switch (contentType) {
+    case "video_transcript":
+      return "\n\nThis is a video transcript. Pay attention to speaker cadence, visual cue mentions, and moments that would work as video clips.";
+    case "podcast_transcript":
+      return "\n\nThis is a podcast transcript. Emphasize conversational hooks, guest quotes, and back-and-forth exchanges that reveal strong opinions.";
+    case "blog":
+      return "\n\nThis is a blog post. Emphasize written structure, SEO-friendly hooks, and key takeaways that can stand alone as social snippets.";
+    default:
+      return "";
+  }
+}
+
 export async function analyzeContentDNA(
   content: string,
   contentType: string,
@@ -35,7 +63,9 @@ export async function analyzeContentDNA(
 ): Promise<Record<string, unknown>> {
   const anthropic = getAnthropic();
 
-  const prompt = `Analyze the following ${contentType} content titled "${title}" and produce a Content DNA Card as structured JSON.
+  const contentTypeHint = getContentTypeHint(contentType);
+
+  const prompt = `Analyze the following ${contentType} content titled "${title}" and produce a Content DNA Card as structured JSON.${contentTypeHint}
 
 Return ONLY valid JSON (no explanation or markdown) with exactly these fields:
 
@@ -75,7 +105,7 @@ ${content.substring(0, 15000)}`;
     });
 
     const responseText = message.content[0].type === "text" ? message.content[0].text : "";
-    return extractJsonFromResponse(responseText);
+    return sanitizeDNA(extractJsonFromResponse(responseText));
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     console.error("Content DNA analysis error:", errorMsg);
