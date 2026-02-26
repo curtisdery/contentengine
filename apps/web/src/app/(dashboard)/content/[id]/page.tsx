@@ -404,11 +404,28 @@ export default function ContentDetailPage() {
       {!hasDNA && !isAnalyzing && !isFailed && (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16">
+            <div className="mb-6 rounded-2xl bg-cme-primary/10 p-5">
+              <FileText className="h-10 w-10 text-cme-primary" />
+            </div>
             <p className="text-lg font-semibold text-cme-text">
               Content uploaded successfully
             </p>
-            <p className="mt-2 text-sm text-cme-text-muted">
-              Click &ldquo;Re-analyze&rdquo; to extract the Content DNA.
+            <p className="mt-2 max-w-sm text-center text-sm text-cme-text-muted">
+              Click below to analyze this content and extract its DNA &mdash;
+              your unique voice, themes, and key insights that Pandocast will
+              use to generate platform-ready outputs.
+            </p>
+            <Button
+              className="mt-6"
+              onClick={handleReanalyze}
+              isLoading={isReanalyzing}
+              disabled={isReanalyzing}
+            >
+              <Sparkles className="mr-2 h-4 w-4" />
+              Analyze Content
+            </Button>
+            <p className="mt-3 text-xs text-cme-text-muted">
+              This usually takes 1&ndash;3 minutes.
             </p>
           </CardContent>
         </Card>

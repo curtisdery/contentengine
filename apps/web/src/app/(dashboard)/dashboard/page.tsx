@@ -199,7 +199,7 @@ export default function DashboardPage() {
   const multiplierDisplay =
     dashboard && dashboard.best_multiplier_score > 0
       ? `${dashboard.best_multiplier_score}x`
-      : '\u2014';
+      : '0x';
 
   // Determine the user's next step in the onboarding workflow
   const contentCount = dashboard?.total_content_pieces ?? 0;
