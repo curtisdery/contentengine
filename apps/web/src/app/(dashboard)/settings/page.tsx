@@ -195,7 +195,7 @@ export default function SettingsPage() {
       {/* Quick Navigation */}
       <div>
         <h2 className="text-sm font-medium text-cme-text-muted uppercase tracking-wider mb-3">
-          Settings
+          Manage
         </h2>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <SettingsNavCard

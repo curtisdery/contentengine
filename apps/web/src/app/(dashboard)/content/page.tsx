@@ -78,15 +78,15 @@ function ContentCard({
           onDelete(item.id);
         }}
         className="absolute right-3 top-3 rounded-lg p-1.5 text-cme-text-muted opacity-0 transition-all hover:bg-cme-error/10 hover:text-cme-error group-hover:opacity-100 focus-visible:opacity-100"
-        aria-label={`Delete ${item.title}`}
+        aria-label={`Delete ${cleanTitle(item.title)}`}
       >
         <Trash2 className="h-4 w-4" />
       </button>
       <CardContent className="p-5">
         <div className="space-y-3">
-          <h3 className="text-base font-semibold text-cme-text group-hover:text-cme-primary transition-colors line-clamp-2 pr-8">
+          <h2 className="text-base font-semibold text-cme-text group-hover:text-cme-primary transition-colors line-clamp-2 pr-8">
             {cleanTitle(item.title)}
-          </h3>
+          </h2>
           <div className="flex flex-wrap items-center gap-2">
             <Badge
               variant={contentTypeBadgeVariant[item.content_type] || 'outline'}

@@ -128,9 +128,9 @@ function AutopilotWidget() {
             <p className="text-sm font-medium text-cme-text group-hover:text-white transition-colors">
               Autopilot:{' '}
               <span className="font-mono">
-                {summary.autopilot_enabled}
+                {summary.autopilot_enabled ?? 0}
               </span>{' '}
-              {summary.autopilot_enabled === 1 ? 'platform' : 'platforms'}{' '}
+              {(summary.autopilot_enabled ?? 0) === 1 ? 'platform' : 'platforms'}{' '}
               active
             </p>
             {summary.autopilot_enabled > 0 && (
