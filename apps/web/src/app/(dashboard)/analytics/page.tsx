@@ -484,6 +484,9 @@ function StrategySuggestions({ data }: { data: ContentStrategySuggestion[] }) {
     <div className="grid gap-3 sm:grid-cols-2">
       {filtered.map((suggestion, idx) => {
         const config = SUGGESTION_TYPE_CONFIG[suggestion.type];
+        const dp = suggestion.data_points;
+        const barOpacity = dp < 3 ? 0.3 : dp < 10 ? 0.6 : 1;
+        const isLowData = dp < 3;
         return (
           <Card
             key={idx}
@@ -509,9 +512,23 @@ function StrategySuggestions({ data }: { data: ContentStrategySuggestion[] }) {
               </p>
               <div className="flex items-center gap-4">
                 {/* Confidence meter */}
-                <div className="flex-1">
-                  <div className="mb-1 text-[10px] text-cme-text-muted">
-                    Confidence
+                <div
+                  className="flex-1"
+                  title={
+                    isLowData
+                      ? `Low confidence — only ${dp} data point${dp === 1 ? '' : 's'}`
+                      : `Based on ${dp} data points`
+                  }
+                >
+                  <div className="mb-1 flex items-center gap-2">
+                    <span className="text-[10px] text-cme-text-muted">
+                      Confidence
+                    </span>
+                    {isLowData && (
+                      <span className="text-[10px] font-medium text-cme-warning">
+                        Not enough data
+                      </span>
+                    )}
                   </div>
                   <div className="h-1.5 w-full rounded-full bg-cme-surface-hover overflow-hidden">
                     <div
@@ -519,6 +536,7 @@ function StrategySuggestions({ data }: { data: ContentStrategySuggestion[] }) {
                       style={{
                         width: `${suggestion.confidence * 100}%`,
                         backgroundColor: config.color,
+                        opacity: barOpacity,
                       }}
                     />
                   </div>
@@ -527,8 +545,13 @@ function StrategySuggestions({ data }: { data: ContentStrategySuggestion[] }) {
                   <div className="text-[10px] text-cme-text-muted">
                     Data points
                   </div>
-                  <div className="font-mono text-xs font-semibold text-cme-text">
-                    {suggestion.data_points}
+                  <div
+                    className={cn(
+                      'font-mono text-xs font-semibold',
+                      dp < 10 ? 'text-cme-warning' : 'text-cme-text'
+                    )}
+                  >
+                    {dp}
                   </div>
                 </div>
               </div>

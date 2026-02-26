@@ -27,6 +27,35 @@ const contentTypeLabels: Record<string, string> = {
   podcast_transcript: 'Podcast',
 };
 
+function AnalyzingState() {
+  const [dots, setDots] = React.useState('');
+
+  React.useEffect(() => {
+    const id = setInterval(() => {
+      setDots((prev) => (prev.length >= 3 ? '' : prev + '.'));
+    }, 500);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <Card className="border-cme-warning/20">
+      <CardContent className="flex flex-col items-center py-10">
+        <Sparkles className="h-8 w-8 text-cme-warning" />
+        <h3 className="mt-4 text-lg font-semibold text-cme-text">
+          Analyzing your content{dots}
+        </h3>
+        <p className="mt-2 max-w-sm text-center text-sm text-cme-text-muted">
+          We&apos;re extracting your Content DNA&hellip; This usually takes
+          30&ndash;60 seconds.
+        </p>
+        <div className="mt-6 w-full">
+          <DNACardSkeleton />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function ContentDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -275,7 +304,7 @@ export default function ContentDetailPage() {
       )}
 
       {/* Analyzing State */}
-      {isAnalyzing && <DNACardSkeleton />}
+      {isAnalyzing && <AnalyzingState />}
 
       {/* DNA Card */}
       {hasDNA && content.content_dna && (

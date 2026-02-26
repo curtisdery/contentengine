@@ -7,8 +7,10 @@ import {
   Bot,
   CreditCard,
   Globe,
+  Pencil,
   Shield,
   User,
+  X,
 } from 'lucide-react';
 import {
   Card,
@@ -21,8 +23,11 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
+import { Input } from '@/components/ui/input';
 import { useAuthStore } from '@/stores/auth-store';
 import { useToast } from '@/hooks/use-toast';
+import { sendPasswordResetEmail, updateProfile } from 'firebase/auth';
+import { auth } from '@/lib/firebase';
 import { callFunction } from '@/lib/cloud-functions';
 import { SUBSCRIPTION_LABELS, ROUTES } from '@/lib/constants';
 import { PageTitle } from '@/components/layout/page-title';
@@ -100,9 +105,50 @@ function SettingsNavCard({
 
 export default function SettingsPage() {
   const router = useRouter();
-  const { user } = useAuthStore();
-  const { warning: showWarning, error: showError } = useToast();
+  const { user, initialize } = useAuthStore();
+  const { success: showSuccess, error: showError } = useToast();
   const [billingLoading, setBillingLoading] = React.useState<'portal' | 'checkout' | null>(null);
+
+  // FIX 5: Password reset
+  const [showPasswordConfirm, setShowPasswordConfirm] = React.useState(false);
+  const [isResettingPassword, setIsResettingPassword] = React.useState(false);
+
+  // FIX 6: 2FA info modal
+  const [show2FAInfo, setShow2FAInfo] = React.useState(false);
+
+  // FIX 9: Profile editing
+  const [isEditingProfile, setIsEditingProfile] = React.useState(false);
+  const [editName, setEditName] = React.useState('');
+  const [isSavingProfile, setIsSavingProfile] = React.useState(false);
+
+  const handlePasswordReset = async () => {
+    if (!user?.email) return;
+    setIsResettingPassword(true);
+    try {
+      await sendPasswordResetEmail(auth, user.email);
+      showSuccess('Reset link sent', `Check ${user.email} for a password reset link.`);
+      setShowPasswordConfirm(false);
+    } catch {
+      showError('Failed to send reset link', 'Please try again later.');
+    } finally {
+      setIsResettingPassword(false);
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    if (!auth.currentUser || !editName.trim()) return;
+    setIsSavingProfile(true);
+    try {
+      await updateProfile(auth.currentUser, { displayName: editName.trim() });
+      initialize();
+      showSuccess('Profile updated', 'Your display name has been changed.');
+      setIsEditingProfile(false);
+    } catch {
+      showError('Update failed', 'Could not update your profile. Please try again.');
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
 
   const subscriptionTier = user?.subscription_tier || 'free';
   const subscriptionLabel =
@@ -185,10 +231,22 @@ export default function SettingsPage() {
             <div className="rounded-lg bg-cme-primary/10 p-2 text-cme-primary">
               <User className="h-5 w-5" />
             </div>
-            <div>
+            <div className="flex-1">
               <CardTitle>Profile</CardTitle>
               <CardDescription>Your personal information</CardDescription>
             </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => {
+                setEditName(user?.full_name || '');
+                setIsEditingProfile(true);
+              }}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              Edit
+            </Button>
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -357,7 +415,7 @@ export default function SettingsPage() {
                 Last changed: Never
               </p>
             </div>
-            <Button variant="outline" size="sm" onClick={() => showWarning('Coming Soon', 'Password changes are managed through your authentication provider.')}>
+            <Button variant="outline" size="sm" onClick={() => setShowPasswordConfirm(true)}>
               Change Password
             </Button>
           </div>
@@ -371,7 +429,7 @@ export default function SettingsPage() {
                 Add an extra layer of security
               </p>
             </div>
-            <Button variant="outline" size="sm" onClick={() => showWarning('Coming Soon', 'Two-factor authentication will be available in a future update.')}>
+            <Button variant="outline" size="sm" onClick={() => setShow2FAInfo(true)}>
               Enable
             </Button>
           </div>
@@ -389,6 +447,144 @@ export default function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Password Reset Confirmation Modal */}
+      {showPasswordConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in"
+            onClick={() => setShowPasswordConfirm(false)}
+          />
+          <Card className="relative z-10 mx-4 w-full max-w-sm border-cme-border shadow-2xl">
+            <button
+              onClick={() => setShowPasswordConfirm(false)}
+              className="absolute right-4 top-4 rounded-lg p-1.5 text-cme-text-muted hover:text-cme-text hover:bg-cme-surface-hover transition-colors"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <CardContent className="flex flex-col items-center py-8 px-6 text-center">
+              <div className="mb-4 rounded-2xl bg-cme-warning/10 p-4">
+                <Shield className="h-8 w-8 text-cme-warning" />
+              </div>
+              <h3 className="text-lg font-semibold text-cme-text">
+                Reset Password
+              </h3>
+              <p className="mt-2 text-sm text-cme-text-muted">
+                We&apos;ll send a reset link to{' '}
+                <span className="font-medium text-cme-text">
+                  {user?.email}
+                </span>
+              </p>
+              <div className="mt-6 flex w-full gap-3">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setShowPasswordConfirm(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  className="flex-1"
+                  onClick={handlePasswordReset}
+                  isLoading={isResettingPassword}
+                  disabled={isResettingPassword}
+                >
+                  Send Reset Link
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* 2FA Info Modal */}
+      {show2FAInfo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in"
+            onClick={() => setShow2FAInfo(false)}
+          />
+          <Card className="relative z-10 mx-4 w-full max-w-sm border-cme-border shadow-2xl">
+            <button
+              onClick={() => setShow2FAInfo(false)}
+              className="absolute right-4 top-4 rounded-lg p-1.5 text-cme-text-muted hover:text-cme-text hover:bg-cme-surface-hover transition-colors"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <CardContent className="flex flex-col items-center py-8 px-6 text-center">
+              <div className="mb-4 rounded-2xl bg-cme-primary/10 p-4">
+                <Shield className="h-8 w-8 text-cme-primary" />
+              </div>
+              <h3 className="text-lg font-semibold text-cme-text">
+                Two-Factor Authentication
+              </h3>
+              <p className="mt-2 text-sm text-cme-text-muted leading-relaxed">
+                We are building TOTP-based two-factor authentication and it will
+                be available in an upcoming release. Your account is currently
+                protected by Firebase Authentication with secure session
+                management.
+              </p>
+              <Button
+                className="mt-6 w-full"
+                onClick={() => setShow2FAInfo(false)}
+              >
+                Got It
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Profile Edit Modal */}
+      {isEditingProfile && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in"
+            onClick={() => setIsEditingProfile(false)}
+          />
+          <Card className="relative z-10 mx-4 w-full max-w-sm border-cme-border shadow-2xl">
+            <button
+              onClick={() => setIsEditingProfile(false)}
+              className="absolute right-4 top-4 rounded-lg p-1.5 text-cme-text-muted hover:text-cme-text hover:bg-cme-surface-hover transition-colors"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <CardContent className="py-8 px-6">
+              <div className="mb-6 flex flex-col items-center text-center">
+                <div className="mb-4 rounded-2xl bg-cme-primary/10 p-4">
+                  <User className="h-8 w-8 text-cme-primary" />
+                </div>
+                <h3 className="text-lg font-semibold text-cme-text">
+                  Edit Profile
+                </h3>
+              </div>
+              <Input
+                label="Display Name"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                placeholder="Your name"
+              />
+              <div className="mt-6 flex gap-3">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setIsEditingProfile(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  className="flex-1"
+                  onClick={handleSaveProfile}
+                  isLoading={isSavingProfile}
+                  disabled={isSavingProfile || !editName.trim()}
+                >
+                  Save
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

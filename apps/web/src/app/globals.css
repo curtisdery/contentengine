@@ -70,6 +70,19 @@ body {
   outline-offset: 2px;
 }
 
+a:focus-visible,
+button:focus-visible,
+[tabindex]:focus-visible,
+[role="link"]:focus-visible,
+[role="button"]:focus-visible,
+[role="tab"]:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+input:focus-visible {
+  outline: 2px solid #6c5ce7;
+  outline-offset: 2px;
+}
+
 /* Mesh gradient animation for auth background */
 @keyframes mesh-gradient {
   0%, 100% {

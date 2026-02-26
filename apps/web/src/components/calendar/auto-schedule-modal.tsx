@@ -212,15 +212,25 @@ function AutoScheduleModal({ isOpen, onClose, onSuccess }: AutoScheduleModalProp
                       )}
                     >
                       <option value="">Choose a completed content piece...</option>
-                      {contentList.map((content) => (
-                        <option key={content.id} value={content.id}>
-                          {content.title}
-                        </option>
-                      ))}
+                      {contentList.map((content) => {
+                        const isSchedulable =
+                          content.status === 'analyzed' || content.status === 'completed';
+                        return (
+                          <option
+                            key={content.id}
+                            value={content.id}
+                            disabled={!isSchedulable}
+                          >
+                            {content.title}
+                            {!isSchedulable ? ` (${content.status})` : ''}
+                          </option>
+                        );
+                      })}
                     </select>
                     {contentList.length === 0 && (
                       <p className="mt-1.5 text-xs text-cme-text-muted">
-                        No completed content found. Generate content first.
+                        No schedulable content found. Content must be analyzed
+                        before scheduling.
                       </p>
                     )}
                   </div>

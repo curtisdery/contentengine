@@ -29,6 +29,15 @@ const TABS: TabConfig[] = [
 
 const ACCEPTED_FILE_TYPES = '.txt,.srt,.vtt';
 
+function isValidUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 function UploadTabs({ onUpload, isLoading }: UploadTabsProps) {
   const [activeTab, setActiveTab] = React.useState<ContentType>('blog');
   const [title, setTitle] = React.useState('');
@@ -136,6 +145,10 @@ function UploadTabs({ onUpload, isLoading }: UploadTabsProps) {
       newErrors.content = 'Content is required. Paste your content or upload a file.';
     }
 
+    if (sourceUrl.trim() && !isValidUrl(sourceUrl.trim())) {
+      newErrors.sourceUrl = 'Please enter a valid URL (e.g., https://yourblog.com/post)';
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -162,11 +175,35 @@ function UploadTabs({ onUpload, isLoading }: UploadTabsProps) {
   return (
     <div>
       {/* Tabs */}
-      <div className="flex border-b border-cme-border">
+      <div
+        className="flex border-b border-cme-border"
+        role="tablist"
+        aria-label="Content type"
+        onKeyDown={(e) => {
+          const ids = TABS.map((t) => t.id);
+          const idx = ids.indexOf(activeTab);
+          let next: number | null = null;
+          if (e.key === 'ArrowRight') next = (idx + 1) % ids.length;
+          else if (e.key === 'ArrowLeft') next = (idx - 1 + ids.length) % ids.length;
+          else if (e.key === 'Home') next = 0;
+          else if (e.key === 'End') next = ids.length - 1;
+          if (next !== null) {
+            e.preventDefault();
+            handleTabChange(ids[next]);
+            const el = document.getElementById(`tab-${ids[next]}`);
+            el?.focus();
+          }
+        }}
+      >
         {TABS.map((tab) => (
           <button
             key={tab.id}
+            id={`tab-${tab.id}`}
             type="button"
+            role="tab"
+            aria-selected={activeTab === tab.id}
+            aria-controls={`tabpanel-${tab.id}`}
+            tabIndex={activeTab === tab.id ? 0 : -1}
             onClick={() => handleTabChange(tab.id)}
             className={cn(
               'relative flex items-center gap-2 px-5 py-3.5 text-sm font-medium transition-all duration-200',
@@ -186,7 +223,13 @@ function UploadTabs({ onUpload, isLoading }: UploadTabsProps) {
       </div>
 
       {/* Form */}
-      <form onSubmit={handleSubmit} className="space-y-6 p-6">
+      <form
+        onSubmit={handleSubmit}
+        className="space-y-6 p-6"
+        role="tabpanel"
+        id={`tabpanel-${activeTab}`}
+        aria-labelledby={`tab-${activeTab}`}
+      >
         {/* Title */}
         <Input
           label="Title"
@@ -352,7 +395,17 @@ function UploadTabs({ onUpload, isLoading }: UploadTabsProps) {
             placeholder="https://yourblog.com/post-title"
             prefixIcon={<LinkIcon className="h-4 w-4" />}
             value={sourceUrl}
-            onChange={(e) => setSourceUrl(e.target.value)}
+            onChange={(e) => {
+              setSourceUrl(e.target.value);
+              if (errors.sourceUrl) {
+                setErrors((prev) => {
+                  const next = { ...prev };
+                  delete next.sourceUrl;
+                  return next;
+                });
+              }
+            }}
+            error={errors.sourceUrl}
             disabled={isLoading}
           />
         )}
