@@ -33,6 +33,7 @@ import { PanicButton } from '@/components/autopilot/panic-button';
 import { callFunction, ApiClientError } from '@/lib/cloud-functions';
 import { useToast } from '@/hooks/use-toast';
 import { ROUTES } from '@/lib/constants';
+import { PageTitle } from '@/components/layout/page-title';
 import type { AutopilotSummaryResponse } from '@/types/api';
 
 // ---------------------------------------------------------------------------
@@ -439,6 +440,7 @@ export default function AutopilotPage() {
 
   return (
     <div className="max-w-4xl space-y-8 animate-fade-in">
+      <PageTitle title="Autopilot" />
       {/* Header */}
       <div className="flex items-center gap-3">
         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => router.push(ROUTES.SETTINGS)}>
@@ -462,19 +464,19 @@ export default function AutopilotPage() {
           <div className="grid grid-cols-3 gap-4 rounded-xl border border-cme-border bg-cme-surface/60 backdrop-blur-sm p-4">
             <div className="text-center">
               <p className="font-mono text-2xl font-bold text-cme-success">
-                {summary.autopilot_enabled}
+                {summary.autopilot_enabled ?? 0}
               </p>
               <p className="text-xs text-cme-text-muted">On Autopilot</p>
             </div>
             <div className="text-center border-x border-cme-border">
               <p className="font-mono text-2xl font-bold text-cme-secondary">
-                {summary.eligible_not_enabled}
+                {summary.eligible_not_enabled ?? 0}
               </p>
               <p className="text-xs text-cme-text-muted">Eligible</p>
             </div>
             <div className="text-center">
               <p className="font-mono text-2xl font-bold text-cme-text">
-                {summary.total_auto_published}
+                {summary.total_auto_published ?? 0}
               </p>
               <p className="text-xs text-cme-text-muted">Auto-Published</p>
             </div>

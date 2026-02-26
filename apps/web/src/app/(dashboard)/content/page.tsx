@@ -12,7 +12,12 @@ import { StatusBadge } from '@/components/content/status-badge';
 import { callFunction, ApiClientError } from '@/lib/cloud-functions';
 import { ROUTES } from '@/lib/constants';
 import { formatDate } from '@/lib/utils';
+import { PageTitle } from '@/components/layout/page-title';
 import type { ContentListResponse, ContentUploadResponse } from '@/types/api';
+
+function cleanTitle(title: string): string {
+  return title.replace(/^(x account|twitter|linkedin|facebook|instagram)\s+/i, '').trim();
+}
 
 const contentTypeBadgeVariant: Record<string, 'default' | 'secondary' | 'outline'> = {
   blog: 'default',
@@ -62,7 +67,7 @@ function ContentCard({ item }: { item: ContentUploadResponse }) {
       <CardContent className="p-5">
         <div className="space-y-3">
           <h3 className="text-base font-semibold text-cme-text group-hover:text-cme-primary transition-colors line-clamp-2">
-            {item.title}
+            {cleanTitle(item.title)}
           </h3>
           <div className="flex flex-wrap items-center gap-2">
             <Badge
@@ -133,6 +138,7 @@ export default function ContentListPage() {
 
   return (
     <div className="space-y-6">
+      <PageTitle title="Content" />
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

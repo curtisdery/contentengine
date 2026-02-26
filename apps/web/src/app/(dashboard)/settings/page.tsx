@@ -25,6 +25,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import { useToast } from '@/hooks/use-toast';
 import { callFunction } from '@/lib/cloud-functions';
 import { SUBSCRIPTION_LABELS, ROUTES } from '@/lib/constants';
+import { PageTitle } from '@/components/layout/page-title';
 
 // ---------------------------------------------------------------------------
 // Navigation Card
@@ -136,6 +137,7 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-3xl space-y-8 animate-fade-in">
+      <PageTitle title="Settings" />
       {/* Page Header */}
       <div className="space-y-1">
         <h1 className="text-3xl font-bold text-cme-text">Settings</h1>
@@ -352,7 +354,7 @@ export default function SettingsPage() {
             <div>
               <p className="text-sm font-medium text-cme-text">Password</p>
               <p className="text-xs text-cme-text-muted">
-                Last changed: Unknown
+                Last changed: Never
               </p>
             </div>
             <Button variant="outline" size="sm" onClick={() => showWarning('Coming Soon', 'Password changes are managed through your authentication provider.')}>

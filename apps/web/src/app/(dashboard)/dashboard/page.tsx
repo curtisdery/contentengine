@@ -16,6 +16,7 @@ import { Badge } from '@/components/ui/badge';
 import { useAuthStore } from '@/stores/auth-store';
 import { cn } from '@/lib/utils';
 import { callFunction } from '@/lib/cloud-functions';
+import { PageTitle } from '@/components/layout/page-title';
 import { ROUTES } from '@/lib/constants';
 import type {
   AnalyticsDashboardResponse,
@@ -280,6 +281,7 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-8 animate-fade-in">
+      <PageTitle title="Dashboard" />
       {/* Welcome Section */}
       <div className="space-y-1">
         <h1 className="text-3xl font-bold text-cme-text">

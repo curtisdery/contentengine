@@ -26,6 +26,7 @@ import { PerformanceBars } from '@/components/analytics/performance-bars';
 import { Heatmap } from '@/components/analytics/heatmap';
 import { cn, formatNumber, formatPercentage } from '@/lib/utils';
 import { useCallable } from '@/hooks/use-callable';
+import { PageTitle } from '@/components/layout/page-title';
 import { getPlatformConfig } from '@/components/content/platform-badge';
 import type {
   AnalyticsDashboardResponse,
@@ -601,6 +602,7 @@ export default function AnalyticsPage() {
   if (hasNoData) {
     return (
       <div className="animate-fade-in">
+        <PageTitle title="Analytics" />
         <div className="mb-8 space-y-1">
           <h1 className="text-3xl font-bold text-cme-text">Analytics</h1>
           <p className="text-cme-text-muted">
@@ -629,6 +631,7 @@ export default function AnalyticsPage() {
 
   return (
     <div className="space-y-10 animate-fade-in">
+      <PageTitle title="Analytics" />
       {/* Page header */}
       <div className="space-y-1">
         <h1 className="text-3xl font-bold text-cme-text">Analytics</h1>

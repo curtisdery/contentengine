@@ -120,12 +120,20 @@ export const listSessions = onCall(async (request) => {
     // Return the user's Firebase Auth record metadata instead.
     const firebaseUser = await auth.getUser(ctx.uid);
 
+    // Extract User-Agent and IP from the current request
+    const rawReq = request.rawRequest;
+    const userAgent = rawReq?.headers?.['user-agent'] ?? null;
+    const ipAddress =
+      (rawReq?.headers?.['x-forwarded-for'] as string)?.split(',')[0]?.trim() ??
+      rawReq?.socket?.remoteAddress ??
+      null;
+
     return {
       sessions: [
         {
           id: ctx.uid,
-          user_agent: null,
-          ip_address: null,
+          user_agent: userAgent,
+          ip_address: ipAddress,
           expires_at: null,
           is_active: !firebaseUser.disabled,
           created_at: firebaseUser.metadata.creationTime ?? null,

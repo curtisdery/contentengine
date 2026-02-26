@@ -13,6 +13,7 @@ import { callFunction, ApiClientError } from '@/lib/cloud-functions';
 import { ROUTES } from '@/lib/constants';
 import { trackEvent } from '@/lib/analytics';
 import { cn } from '@/lib/utils';
+import { PageTitle } from '@/components/layout/page-title';
 import type { ContentUploadRequest, ContentUploadResponse } from '@/types/api';
 
 type UploadMode = 'paste' | 'file';
@@ -87,6 +88,7 @@ export default function ContentUploadPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
+      <PageTitle title="Upload Content" />
       {/* Header */}
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" onClick={() => router.push(ROUTES.CONTENT)}>

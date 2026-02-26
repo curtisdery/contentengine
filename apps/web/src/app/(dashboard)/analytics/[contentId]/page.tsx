@@ -20,6 +20,7 @@ import { PerformanceBars } from '@/components/analytics/performance-bars';
 import { cn, formatNumber, formatPercentage, formatDate } from '@/lib/utils';
 import { callFunction } from '@/lib/cloud-functions';
 import { getPlatformConfig } from '@/components/content/platform-badge';
+import { PageTitle } from '@/components/layout/page-title';
 import type { MultiplierScoreResponse } from '@/types/api';
 
 // ---------------------------------------------------------------------------
@@ -324,6 +325,7 @@ export default function ContentAnalyticsPage() {
 
   return (
     <div className="space-y-8 animate-fade-in">
+      <PageTitle title="Content Analytics" />
       {/* Back link */}
       <Link
         href="/analytics"

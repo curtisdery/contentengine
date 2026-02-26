@@ -26,6 +26,7 @@ import { AutoScheduleModal } from '@/components/calendar/auto-schedule-modal';
 import { callFunction, ApiClientError } from '@/lib/cloud-functions';
 import { useToast } from '@/hooks/use-toast';
 import { ROUTES } from '@/lib/constants';
+import { PageTitle } from '@/components/layout/page-title';
 import type {
   ScheduledEventResponse,
   CalendarEventsResponse,
@@ -378,6 +379,7 @@ export default function CalendarPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      <PageTitle title="Calendar" />
       {/* Header */}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="space-y-1">

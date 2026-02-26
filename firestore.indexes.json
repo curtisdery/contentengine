@@ -89,6 +89,14 @@
       ]
     },
     {
+      "collectionGroup": "brandVoiceProfiles",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "workspaceId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "content_uploads",
       "queryScope": "COLLECTION",
       "fields": [

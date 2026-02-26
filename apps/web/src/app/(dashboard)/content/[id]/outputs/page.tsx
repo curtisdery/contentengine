@@ -13,6 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { callFunction, ApiClientError } from '@/lib/cloud-functions';
 import { getAllPlatforms, getPlatformName } from '@/lib/platform-profiles';
 import { ROUTES } from '@/lib/constants';
+import { PageTitle } from '@/components/layout/page-title';
 import type {
   GeneratedOutputListResponse,
   GeneratedOutputResponse,
@@ -352,6 +353,7 @@ export default function OutputsPage() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
+      <PageTitle title="Outputs" />
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-4">

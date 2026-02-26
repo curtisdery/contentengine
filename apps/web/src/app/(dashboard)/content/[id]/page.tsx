@@ -14,12 +14,17 @@ import { GenerationModal } from '@/components/content/generation-modal';
 import { useToast } from '@/hooks/use-toast';
 import { callFunction, ApiClientError } from '@/lib/cloud-functions';
 import { ROUTES } from '@/lib/constants';
+import { PageTitle } from '@/components/layout/page-title';
 import type { ContentUploadResponse, ContentUpdateRequest } from '@/types/api';
+
+function cleanTitle(title: string): string {
+  return title.replace(/^(x account|twitter|linkedin|facebook|instagram)\s+/i, '').trim();
+}
 
 const contentTypeLabels: Record<string, string> = {
   blog: 'Blog',
-  video_transcript: 'Video Transcript',
-  podcast_transcript: 'Podcast Transcript',
+  video_transcript: 'Video',
+  podcast_transcript: 'Podcast',
 };
 
 export default function ContentDetailPage() {
@@ -66,25 +71,41 @@ export default function ContentDetailPage() {
     fetchContent();
   }, [fetchContent]);
 
-  // Poll while analyzing
+  // Poll while analyzing — exponential backoff
   React.useEffect(() => {
     if (content?.status !== 'analyzing') return;
 
-    const interval = setInterval(async () => {
+    let attempt = 0;
+    let timeoutId: ReturnType<typeof setTimeout>;
+    let cancelled = false;
+
+    const poll = async () => {
+      if (cancelled) return;
+      attempt++;
       try {
         const response = await callFunction<{ content_id: string }, ContentUploadResponse>(
           'getContent', { content_id: id }
         );
+        if (cancelled) return;
         setContent(response);
-        if (response.status !== 'analyzing') {
-          clearInterval(interval);
+        if (response.status === 'analyzing' && attempt < 10) {
+          const delay = Math.min(3000 * Math.pow(1.5, attempt - 1), 30000);
+          timeoutId = setTimeout(poll, delay);
         }
       } catch {
-        // Silently retry on next interval
+        if (!cancelled && attempt < 10) {
+          const delay = Math.min(3000 * Math.pow(1.5, attempt - 1), 30000);
+          timeoutId = setTimeout(poll, delay);
+        }
       }
-    }, 3000);
+    };
 
-    return () => clearInterval(interval);
+    timeoutId = setTimeout(poll, 2000);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+    };
   }, [content?.status, id]);
 
   const handleReanalyze = async () => {
@@ -197,6 +218,7 @@ export default function ContentDetailPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
+      <PageTitle title="Content Detail" />
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-4">
@@ -205,7 +227,7 @@ export default function ContentDetailPage() {
           </Button>
           <div>
             <h1 className="text-2xl font-bold text-cme-text">
-              {content.title}
+              {cleanTitle(content.title)}
             </h1>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <Badge variant="outline">

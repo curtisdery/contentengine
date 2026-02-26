@@ -12,6 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import { callFunction, ApiClientError } from '@/lib/cloud-functions';
 import { ROUTES } from '@/lib/constants';
 import { formatDate } from '@/lib/utils';
+import { PageTitle } from '@/components/layout/page-title';
 import type { VoiceProfileResponse } from '@/types/api';
 
 function ProfileCardSkeleton() {
@@ -162,6 +163,7 @@ export default function VoiceProfilesPage() {
 
   return (
     <div className="space-y-6">
+      <PageTitle title="Voice Profiles" />
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

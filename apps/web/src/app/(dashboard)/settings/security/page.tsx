@@ -35,6 +35,7 @@ import { PanicButton } from '@/components/autopilot/panic-button';
 import { callFunction, ApiClientError } from '@/lib/cloud-functions';
 import { useToast } from '@/hooks/use-toast';
 import { ROUTES } from '@/lib/constants';
+import { PageTitle } from '@/components/layout/page-title';
 import type { SessionResponse, AuditLogEntry } from '@/types/api';
 
 // ---------------------------------------------------------------------------
@@ -466,6 +467,7 @@ export default function SecurityPage() {
 
   return (
     <div className="max-w-3xl space-y-8 animate-fade-in">
+      <PageTitle title="Security" />
       {/* Header */}
       <div className="flex items-center gap-3">
         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => router.push(ROUTES.SETTINGS)}>

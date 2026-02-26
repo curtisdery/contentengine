@@ -25,6 +25,7 @@ import { callFunction, ApiClientError } from '@/lib/cloud-functions';
 import { useToast } from '@/hooks/use-toast';
 import { useOAuthPopup } from '@/hooks/use-oauth-popup';
 import { ROUTES } from '@/lib/constants';
+import { PageTitle } from '@/components/layout/page-title';
 import type {
   PlatformConnectionResponse,
   PlatformProfileResponse,
@@ -150,14 +151,21 @@ function PlatformCard({
       )}
 
       <div className="flex items-start gap-3">
-        {/* Platform icon dot */}
+        {/* Platform icon */}
         <div
           className="shrink-0 rounded-lg p-2.5 transition-all duration-300 group-hover:scale-105"
           style={{ backgroundColor: `${config.color}15` }}
         >
           <span
-            className={cn('block h-5 w-5 rounded-full', config.bgClass)}
-          />
+            className="flex h-5 w-5 items-center justify-center"
+            style={{ color: config.color }}
+          >
+            {config.icon ?? (
+              <span className="text-xs font-bold">
+                {config.name.charAt(0)}
+              </span>
+            )}
+          </span>
         </div>
 
         <div className="flex-1 min-w-0">
@@ -434,6 +442,7 @@ export default function ConnectionsPage() {
 
   return (
     <div className="max-w-4xl space-y-8 animate-fade-in">
+      <PageTitle title="Connections" />
       {/* Header */}
       <div className="flex items-center gap-3">
         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => router.push(ROUTES.SETTINGS)}>

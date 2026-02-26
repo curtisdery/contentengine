@@ -29,6 +29,7 @@ import { PlatformBadge, getPlatformConfig, platformMap } from '@/components/cont
 import { callFunction, ApiClientError } from '@/lib/cloud-functions';
 import { useToast } from '@/hooks/use-toast';
 import { ROUTES } from '@/lib/constants';
+import { PageTitle } from '@/components/layout/page-title';
 import type {
   ScheduledEventResponse,
   CalendarEventsResponse,
@@ -438,6 +439,7 @@ export default function QueuePage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      <PageTitle title="Queue" />
       {/* Header */}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center gap-3">

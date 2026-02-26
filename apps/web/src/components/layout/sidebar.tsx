@@ -32,9 +32,11 @@ interface NavItem {
 interface SidebarProps {
   collapsed: boolean;
   onToggle: () => void;
+  mobileOpen: boolean;
+  onMobileClose: () => void;
 }
 
-function Sidebar({ collapsed, onToggle }: SidebarProps) {
+function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, logout } = useAuthStore();
@@ -84,11 +86,20 @@ function Sidebar({ collapsed, onToggle }: SidebarProps) {
   };
 
   return (
+    <>
+    {/* Mobile backdrop */}
+    {mobileOpen && (
+      <div className="fixed inset-0 z-40 bg-black/50 md:hidden" onClick={onMobileClose} />
+    )}
     <aside
       className={cn(
-        'fixed left-0 top-0 z-40 flex h-screen flex-col border-r border-cme-border bg-cme-surface/50 backdrop-blur-xl',
+        'fixed left-0 top-0 z-50 flex h-screen flex-col border-r border-cme-border bg-cme-surface/95 backdrop-blur-xl',
         'transition-all duration-300 ease-in-out',
-        collapsed ? 'w-[72px]' : 'w-[260px]'
+        // Desktop
+        'hidden md:flex',
+        collapsed ? 'md:w-[72px]' : 'md:w-[260px]',
+        // Mobile drawer
+        mobileOpen && 'flex w-[260px]'
       )}
     >
       {/* Logo */}
@@ -223,6 +234,7 @@ function Sidebar({ collapsed, onToggle }: SidebarProps) {
         </button>
       </div>
     </aside>
+    </>
   );
 }
 

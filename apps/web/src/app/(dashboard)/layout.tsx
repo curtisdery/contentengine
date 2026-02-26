@@ -18,6 +18,7 @@ export default function DashboardLayout({
   const router = useRouter();
   const { isAuthenticated, isLoading } = useAuthStore();
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -51,12 +52,15 @@ export default function DashboardLayout({
       <Sidebar
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
+        mobileOpen={mobileMenuOpen}
+        onMobileClose={() => setMobileMenuOpen(false)}
       />
-      <Topbar sidebarCollapsed={sidebarCollapsed} />
+      <Topbar sidebarCollapsed={sidebarCollapsed} onMenuToggle={() => setMobileMenuOpen(!mobileMenuOpen)} />
       <main
         className={cn(
           'pt-16 min-h-screen transition-all duration-300',
-          sidebarCollapsed ? 'pl-[72px]' : 'pl-[260px]'
+          'pl-0 md:pl-[72px]',
+          !sidebarCollapsed && 'md:pl-[260px]'
         )}
       >
         <div className="p-6 lg:p-8">{children}</div>

@@ -8,6 +8,7 @@ import { VoiceWizard } from '@/components/voice/voice-wizard';
 import { useToast } from '@/hooks/use-toast';
 import { callFunction, ApiClientError } from '@/lib/cloud-functions';
 import { ROUTES } from '@/lib/constants';
+import { PageTitle } from '@/components/layout/page-title';
 import type { VoiceProfileCreateRequest, VoiceProfileResponse } from '@/types/api';
 
 export default function VoiceSetupPage() {
@@ -44,6 +45,7 @@ export default function VoiceSetupPage() {
 
   return (
     <div className="space-y-6">
+      <PageTitle title="Voice Setup" />
       {/* Header */}
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" onClick={() => router.push(ROUTES.VOICE_PROFILES)}>

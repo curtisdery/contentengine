@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { User, Settings, LogOut } from 'lucide-react';
+import { User, Settings, LogOut, Menu } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Avatar } from '@/components/ui/avatar';
 import {
@@ -18,9 +18,10 @@ import { ROUTES } from '@/lib/constants';
 
 interface TopbarProps {
   sidebarCollapsed: boolean;
+  onMenuToggle: () => void;
 }
 
-function Topbar({ sidebarCollapsed }: TopbarProps) {
+function Topbar({ sidebarCollapsed, onMenuToggle }: TopbarProps) {
   const router = useRouter();
   const { user, logout } = useAuthStore();
 
@@ -34,9 +35,15 @@ function Topbar({ sidebarCollapsed }: TopbarProps) {
       className={cn(
         'fixed top-0 right-0 z-30 flex h-16 items-center justify-end border-b border-cme-border bg-cme-bg/80 backdrop-blur-xl px-6 gap-3',
         'transition-all duration-300',
-        sidebarCollapsed ? 'left-[72px]' : 'left-[260px]'
+        'left-0 md:left-[72px]',
+        !sidebarCollapsed && 'md:left-[260px]'
       )}
     >
+      {/* Mobile hamburger */}
+      <button className="mr-auto md:hidden p-2 rounded-lg hover:bg-cme-surface-hover" onClick={onMenuToggle}>
+        <Menu className="h-5 w-5 text-cme-text" />
+      </button>
+
       {/* Notification Bell */}
       <NotificationsDropdown />
 
