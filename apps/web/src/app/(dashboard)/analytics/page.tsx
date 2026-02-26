@@ -144,7 +144,7 @@ function EmptyState() {
 // ---------------------------------------------------------------------------
 
 function ContentTypeCards({ data }: { data: ContentTypePerformanceResponse[] }) {
-  if (data.length === 0) {
+  if (!data || data.length === 0) {
     return (
       <div className="py-8 text-center text-sm text-cme-text-muted">
         No content type data yet.

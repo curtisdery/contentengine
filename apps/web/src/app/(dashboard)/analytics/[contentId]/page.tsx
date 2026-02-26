@@ -169,7 +169,7 @@ function OutputPerformanceCards({
 }: {
   outputs: ContentAnalyticsDetail['output_performance'];
 }) {
-  if (outputs.length === 0) {
+  if (!outputs || outputs.length === 0) {
     return (
       <div className="py-8 text-center text-sm text-cme-text-muted">
         No output performance data yet.

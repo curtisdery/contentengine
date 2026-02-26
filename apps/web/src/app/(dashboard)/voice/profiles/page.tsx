@@ -250,7 +250,7 @@ export default function VoiceProfilesPage() {
                 </div>
 
                 {/* Voice Attributes */}
-                {profile.voice_attributes.length > 0 && (
+                {(profile.voice_attributes ?? []).length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
                     {profile.voice_attributes.map((attr) => (
                       <span
@@ -264,7 +264,7 @@ export default function VoiceProfilesPage() {
                 )}
 
                 {/* Tone Metrics */}
-                {Object.keys(profile.tone_metrics).length > 0 && (
+                {profile.tone_metrics && Object.keys(profile.tone_metrics).length > 0 && (
                   <ToneMeter metrics={profile.tone_metrics} size="sm" />
                 )}
 

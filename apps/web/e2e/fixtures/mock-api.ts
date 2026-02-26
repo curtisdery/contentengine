@@ -6,6 +6,12 @@ import {
   MOCK_ANALYTICS_SUMMARY,
   MOCK_CONNECTIONS,
   MOCK_SIGNUP_RESPONSE,
+  MOCK_SESSIONS,
+  MOCK_AUDIT_LOG,
+  MOCK_VOICE_PROFILES,
+  MOCK_OUTPUTS,
+  MOCK_CALENDAR_EVENTS,
+  MOCK_NOTIFICATIONS,
 } from '../helpers/mock-responses';
 
 /**
@@ -26,6 +32,12 @@ export async function mockAllApiRoutes(page: Page) {
     analytics: MOCK_ANALYTICS_SUMMARY,
     connections: MOCK_CONNECTIONS,
     signup: MOCK_SIGNUP_RESPONSE,
+    sessions: MOCK_SESSIONS,
+    auditLog: MOCK_AUDIT_LOG,
+    voiceProfiles: MOCK_VOICE_PROFILES,
+    outputs: MOCK_OUTPUTS,
+    calendarEvents: MOCK_CALENDAR_EVENTS,
+    notifications: MOCK_NOTIFICATIONS,
   };
 
   await page.addInitScript((m) => {
@@ -41,20 +53,20 @@ export async function mockAllApiRoutes(page: Page) {
       reanalyzeContent: () => ({ success: true }),
 
       // Outputs
-      listOutputs: () => ({ items: [], total: 0 }),
+      listOutputs: () => m.outputs,
       approveOutput: () => ({ success: true }),
       editOutput: () => ({ success: true }),
-      bulkApproveOutputs: () => ({ approved_count: 0 }),
+      bulkApproveOutputs: () => ({ approved_count: m.outputs.items.length }),
       regenerateOutput: () => ({ success: true }),
 
       // Generation
       triggerGeneration: () => ({ items: [], total: 0 }),
 
       // Calendar
-      getCalendarEvents: () => ({ events: [], total: 0 }),
+      getCalendarEvents: () => m.calendarEvents,
       getCalendarStats: () => ({
-        upcoming_today: 0,
-        upcoming_this_week: 0,
+        upcoming_today: 1,
+        upcoming_this_week: 3,
         total_published: m.analytics.total_published,
         total_failed: 0,
         content_gaps: [],
@@ -67,10 +79,21 @@ export async function mockAllApiRoutes(page: Page) {
 
       // Analytics
       getOverview: () => m.analytics,
-      getContentAnalytics: () => m.analytics,
+      getContentAnalytics: () => ({
+        ...m.analytics,
+        content_id: m.contentList.items[0]?.id,
+        title: m.contentList.items[0]?.title,
+        multiplier_score: m.analytics.avg_multiplier_score,
+        platform_breakdown: [],
+        performance_timeline: [],
+        output_performances: [],
+      }),
       getPlatformAnalytics: () => ({ platforms: [] }),
+      getContentTypeAnalytics: () => [],
+      getHookAnalytics: () => [],
       getHeatmap: () => ({ heatmap: [] }),
       getAudienceIntelligence: () => ({}),
+      getContentStrategy: () => ({ recommendations: [] }),
 
       // Connections
       listConnections: () => ({ items: m.connections, total: m.connections.length }),
@@ -79,7 +102,7 @@ export async function mockAllApiRoutes(page: Page) {
       refreshConnection: () => ({ success: true }),
 
       // Voice
-      listVoiceProfiles: () => ({ items: [], total: 0 }),
+      listVoiceProfiles: () => m.voiceProfiles,
       createVoiceProfile: () => ({ id: 'mock-profile-id' }),
       deleteVoiceProfile: () => ({ success: true }),
       analyzeSamples: () => ({
@@ -100,8 +123,8 @@ export async function mockAllApiRoutes(page: Page) {
       panicStop: () => ({ success: true }),
 
       // Security
-      listSessions: () => ({ sessions: [] }),
-      getAuditLog: () => ({ entries: [], total: 0 }),
+      listSessions: () => m.sessions,
+      getAuditLog: () => m.auditLog,
       revokeSession: () => ({ success: true }),
       revokeAllSessions: () => ({ success: true }),
 
@@ -110,6 +133,14 @@ export async function mockAllApiRoutes(page: Page) {
 
       // Team
       listMembers: () => ({ items: [], total: 0 }),
+
+      // Notifications
+      getNotifications: () => m.notifications,
+      markNotificationRead: () => ({ success: true }),
+      markAllNotificationsRead: () => ({ success: true }),
+
+      // Waitlist
+      captureEmail: () => ({ success: true }),
     };
   }, mocks);
 }

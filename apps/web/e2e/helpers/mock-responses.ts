@@ -9,6 +9,12 @@ export const MOCK_USER = {
   updated_at: '2025-01-01T00:00:00Z',
 };
 
+export const MOCK_FREE_USER = {
+  ...MOCK_USER,
+  id: 'e2e-free-user',
+  subscription_tier: 'free' as const,
+};
+
 export const MOCK_CONTENT_LIST = {
   items: [
     {
@@ -109,4 +115,130 @@ export const MOCK_SIGNUP_RESPONSE = {
 
 export const MOCK_LOGOUT_RESPONSE = {
   message: 'Logged out successfully',
+};
+
+export const MOCK_SESSIONS = {
+  sessions: [
+    {
+      id: 'session-001',
+      device: 'Chrome on macOS',
+      ip_address: '192.168.1.1',
+      last_active: '2025-06-01T12:00:00Z',
+      created_at: '2025-05-01T08:00:00Z',
+      is_current: true,
+    },
+    {
+      id: 'session-002',
+      device: 'Safari on iPhone',
+      ip_address: '10.0.0.1',
+      last_active: '2025-05-28T18:30:00Z',
+      created_at: '2025-05-15T09:00:00Z',
+      is_current: false,
+    },
+  ],
+};
+
+export const MOCK_AUDIT_LOG = {
+  entries: [
+    {
+      id: 'audit-001',
+      action: 'login',
+      details: 'Signed in via email',
+      ip_address: '192.168.1.1',
+      timestamp: '2025-06-01T12:00:00Z',
+    },
+    {
+      id: 'audit-002',
+      action: 'content_upload',
+      details: 'Uploaded "How to Build a SaaS"',
+      ip_address: '192.168.1.1',
+      timestamp: '2025-06-01T10:00:00Z',
+    },
+  ],
+  total: 2,
+};
+
+export const MOCK_VOICE_PROFILES = {
+  items: [
+    {
+      id: 'voice-001',
+      workspace_id: '550e8400-e29b-41d4-a716-446655440000',
+      profile_name: 'Professional Voice',
+      is_default: true,
+      sample_content: [],
+      vocabulary: {},
+      formatting_config: {},
+      cta_library: [],
+      topic_boundaries: {},
+      voice_attributes: ['Confident', 'Clear', 'Warm'],
+      tone_metrics: { formality: 3, humor: 2, enthusiasm: 4 },
+      created_at: '2025-03-01T00:00:00Z',
+      updated_at: '2025-03-01T00:00:00Z',
+    },
+  ],
+  total: 1,
+};
+
+export const MOCK_OUTPUTS = {
+  items: [
+    {
+      id: 'output-001',
+      content_id: '660e8400-e29b-41d4-a716-446655440001',
+      platform: 'twitter',
+      format: 'TWITTER_SINGLE',
+      content: 'Building a SaaS is about solving real problems, not chasing trends.',
+      status: 'draft',
+      tier: 'amplifier',
+      created_at: '2025-06-01T11:00:00Z',
+    },
+    {
+      id: 'output-002',
+      content_id: '660e8400-e29b-41d4-a716-446655440001',
+      platform: 'linkedin',
+      format: 'LINKEDIN_POST',
+      content: 'I spent 3 years building a SaaS from scratch. Here are the lessons...',
+      status: 'approved',
+      tier: 'amplifier',
+      created_at: '2025-06-01T11:00:00Z',
+    },
+    {
+      id: 'output-003',
+      content_id: '660e8400-e29b-41d4-a716-446655440001',
+      platform: 'instagram',
+      format: 'INSTAGRAM_CAROUSEL',
+      content: 'Slide 1: How to Build a SaaS\nSlide 2: Start with a real problem...',
+      status: 'draft',
+      tier: 'discovery',
+      created_at: '2025-06-01T11:00:00Z',
+    },
+  ],
+  total: 3,
+};
+
+export const MOCK_CALENDAR_EVENTS = {
+  events: [
+    {
+      id: 'event-001',
+      output_id: 'output-001',
+      platform: 'twitter',
+      title: 'Building a SaaS is about solving real problems...',
+      scheduled_at: new Date(Date.now() + 86400000).toISOString(), // tomorrow
+      status: 'scheduled',
+    },
+    {
+      id: 'event-002',
+      output_id: 'output-002',
+      platform: 'linkedin',
+      title: 'I spent 3 years building a SaaS from scratch...',
+      scheduled_at: new Date(Date.now() + 172800000).toISOString(), // day after
+      status: 'scheduled',
+    },
+  ],
+  total: 2,
+};
+
+export const MOCK_NOTIFICATIONS = {
+  items: [],
+  total: 0,
+  unread_count: 0,
 };

@@ -65,6 +65,7 @@ function getTierFromPlatformId(platformId: string): number {
     slides: 6,
     substack: 4,
   };
+  if (!platformId) return 3;
   return tierMap[platformId.toLowerCase()] || 3;
 }
 

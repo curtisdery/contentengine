@@ -37,6 +37,7 @@ const platformMap: Record<string, PlatformConfig> = {
 };
 
 function getPlatformConfig(platformId: string): PlatformConfig {
+  if (!platformId) return { name: 'Unknown', color: '#6c5ce7', bgClass: 'bg-cme-primary' };
   const normalized = platformId.toLowerCase().replace(/[_\s-]/g, '');
   return platformMap[normalized] || {
     name: platformId.replace(/[_-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),

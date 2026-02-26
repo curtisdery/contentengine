@@ -1,111 +1,17 @@
-import { test, expect, Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
+import { setupAuthenticated, setupAuthenticatedFree, setupUnauthenticated, blockFirebaseApis } from '../fixtures/auth';
+import { MOCK_ANALYTICS_EMPTY } from '../helpers/mock-responses';
 
 /**
- * Full app audit: exercises every page, button, and flow against the real backend.
- * Uses instant E2E auth mock (no async API call for auth) while keeping
- * real API routes so upload/content/analytics calls hit the live backend.
+ * Full app audit: exercises every page, button, and flow.
+ * Uses shared fixtures for auth mocking and API mocks.
  */
-
-async function blockFirebase(page: Page) {
-  await page.route('**/*identitytoolkit.googleapis.com/**', (route) => route.abort());
-  await page.route('**/*securetoken.googleapis.com/**', (route) => route.abort());
-  await page.route('**/*firebaseinstallations.googleapis.com/**', (route) => route.abort());
-  await page.route('**/*firebase.googleapis.com/**', (route) => route.abort());
-  await page.route('**/*google-analytics.com/**', (route) => route.abort());
-  await page.route('**/*googletagmanager.com/**', (route) => route.abort());
-}
-
-const MOCK_USER = {
-  id: 'e2e-audit-user',
-  email: 'dev@pandocast.local',
-  full_name: 'Dev User',
-  firebase_uid: null,
-  avatar_url: null,
-  subscription_tier: 'free' as const,
-  is_active: true,
-  created_at: '2024-01-01T00:00:00Z',
-  updated_at: '2024-01-01T00:00:00Z',
-};
-
-/**
- * Set up instant auth with mock Cloud Functions.
- * The auth store sees __E2E_AUTH_MOCK__ and sets state synchronously.
- * callFunction sees __E2E_MOCK_FUNCTIONS__ and returns mock data directly.
- */
-async function setupRealBackendAuth(page: Page) {
-  await blockFirebase(page);
-
-  const MOCK_ANALYTICS = {
-    total_content_pieces: 0,
-    total_outputs_generated: 0,
-    total_published: 0,
-    total_reach: 0,
-    total_engagements: 0,
-    avg_multiplier_score: 0,
-    best_multiplier_score: 0,
-    platforms_active: 0,
-    top_performing_content: [],
-    recent_performance: [],
-  };
-
-  const MOCK_CONTENT_LIST = {
-    items: [],
-    total: 0,
-    page: 1,
-    per_page: 20,
-  };
-
-  await page.addInitScript((m) => {
-    (window as any).__E2E_AUTH_MOCK__ = true;
-    (window as any).__E2E_MOCK_USER__ = m.user;
-    (window as any).__E2E_MOCK_FUNCTIONS__ = {
-      createProfile: () => m.user,
-      getOverview: () => m.analytics,
-      listConnections: () => ({ items: [], total: 0 }),
-      getAutopilotSummary: () => ({ autopilot_enabled: 0, eligible_not_enabled: 0, total_auto_published: 0, platforms: [] }),
-      listContent: () => m.contentList,
-      getContent: () => ({}),
-      createContent: () => ({}),
-      updateContent: () => ({}),
-      reanalyzeContent: () => ({ success: true }),
-      listOutputs: () => ({ items: [], total: 0 }),
-      triggerGeneration: () => ({ items: [], total: 0 }),
-      getCalendarEvents: () => ({ events: [], total: 0 }),
-      getCalendarStats: () => ({ upcoming_today: 0, upcoming_this_week: 0, total_published: 0, total_failed: 0, content_gaps: [] }),
-      getContentAnalytics: () => m.analytics,
-      getPlatformAnalytics: () => ({ platforms: [] }),
-      getHeatmap: () => ({ heatmap: [] }),
-      getAudienceIntelligence: () => ({}),
-      listVoiceProfiles: () => ({ items: [], total: 0 }),
-      createVoiceProfile: () => ({ id: 'mock-id' }),
-      deleteVoiceProfile: () => ({ success: true }),
-      analyzeSamples: () => ({ tone_metrics: {}, signature_phrases: [], suggested_attributes: [] }),
-      createPortal: () => ({ portal_url: 'https://example.com/portal' }),
-      createCheckout: () => ({ checkout_url: 'https://example.com/checkout' }),
-      getSubscriptionStatus: () => ({ tier: 'free', is_active: true }),
-      toggleAutopilot: () => ({ success: true }),
-      panicStop: () => ({ success: true }),
-      listSessions: () => ({ sessions: [] }),
-      getAuditLog: () => ({ entries: [], total: 0 }),
-      revokeSession: () => ({ success: true }),
-      revokeAllSessions: () => ({ success: true }),
-      registerFCMToken: () => ({ success: true }),
-      getOAuthURL: () => ({ authorize_url: 'https://example.com/oauth' }),
-      disconnectPlatform: () => ({ success: true }),
-      refreshConnection: () => ({ success: true }),
-      listMembers: () => ({ items: [], total: 0 }),
-    };
-  }, { user: MOCK_USER, analytics: MOCK_ANALYTICS, contentList: MOCK_CONTENT_LIST });
-}
 
 // ========== LANDING PAGE (must be unauthenticated) ==========
 
 test.describe('Landing Page', () => {
   test.beforeEach(async ({ page }) => {
-    await blockFirebase(page);
-    await page.addInitScript(() => {
-      (window as any).__E2E_SKIP_AUTH__ = true;
-    });
+    await setupUnauthenticated(page);
   });
 
   test('renders hero, nav, pricing, footer', async ({ page }) => {
@@ -115,7 +21,6 @@ test.describe('Landing Page', () => {
     await expect(page.getByRole('heading', { name: 'Free' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Growth' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Pro', exact: true })).toBeVisible();
-    await page.screenshot({ path: '/tmp/audit-landing.png', fullPage: true });
   });
 
   test('Log in link navigates to /login', async ({ page }) => {
@@ -124,6 +29,28 @@ test.describe('Landing Page', () => {
     await page.getByRole('link', { name: 'Log in' }).click();
     await page.waitForURL('**/login', { timeout: 5000 });
     expect(page.url()).toContain('/login');
+  });
+
+  test('FAQ section renders with expandable items', async ({ page }) => {
+    await page.goto('/');
+    // Heading is "Common questions" on the landing page
+    await expect(page.getByText(/common questions|frequently asked/i)).toBeVisible({ timeout: 10000 });
+    // FAQ items are buttons — click one to expand
+    const faqButton = page.getByRole('button', { name: /what types of content/i });
+    if (await faqButton.isVisible()) {
+      await faqButton.click();
+    }
+  });
+
+  test('footer renders 4 columns with links', async ({ page }) => {
+    await page.goto('/');
+    const footer = page.locator('footer');
+    await expect(footer.getByText('PANDOCAST', { exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(footer.getByText('Product')).toBeVisible();
+    await expect(footer.getByText('Company')).toBeVisible();
+    await expect(footer.getByRole('link', { name: 'Privacy' })).toBeVisible();
+    await expect(footer.getByRole('link', { name: 'Terms' })).toBeVisible();
+    await expect(footer.getByRole('link', { name: 'Blog' })).toBeVisible();
   });
 });
 
@@ -138,7 +65,6 @@ test.describe('Auth Pages', () => {
     await expect(page.getByRole('button', { name: 'Sign In', exact: true })).toBeVisible();
     await expect(page.getByText(/forgot password/i)).toBeVisible();
     await expect(page.getByText(/sign up/i)).toBeVisible();
-    await page.screenshot({ path: '/tmp/audit-login.png' });
   });
 
   test('signup page renders form with all fields', async ({ page }) => {
@@ -149,14 +75,12 @@ test.describe('Auth Pages', () => {
     await expect(page.getByPlaceholder('Create a strong password')).toBeVisible();
     await expect(page.getByPlaceholder('Confirm your password')).toBeVisible();
     await expect(page.getByRole('button', { name: /create account/i })).toBeVisible();
-    await page.screenshot({ path: '/tmp/audit-signup.png' });
   });
 
   test('forgot password page renders', async ({ page }) => {
     await page.goto('/forgot-password');
     await expect(page.getByRole('heading', { name: /reset|forgot/i })).toBeVisible({ timeout: 10000 });
     await expect(page.getByPlaceholder('you@example.com')).toBeVisible();
-    await page.screenshot({ path: '/tmp/audit-forgot.png' });
   });
 });
 
@@ -167,7 +91,7 @@ test.describe('Auth Guard', () => {
 
   for (const route of protectedRoutes) {
     test(`redirects ${route} to /login when unauthenticated`, async ({ page }) => {
-      await blockFirebase(page);
+      await blockFirebaseApis(page);
       await page.addInitScript(() => {
         (window as any).__E2E_SKIP_AUTH__ = true;
       });
@@ -178,14 +102,14 @@ test.describe('Auth Guard', () => {
   }
 });
 
-// ========== AUTHENTICATED PAGES — Instant mock auth + real API routes ==========
+// ========== AUTHENTICATED PAGES ==========
 
-test.describe('Authenticated App (real backend)', () => {
+test.describe('Authenticated App', () => {
   test.beforeEach(async ({ page }) => {
-    await setupRealBackendAuth(page);
+    await setupAuthenticatedFree(page);
   });
 
-  // --- Upload page (UI only — actual submission tested in upload-submit.spec.ts) ---
+  // --- Upload page ---
 
   test('upload page: renders form controls', async ({ page }) => {
     await page.goto('/content/upload');
@@ -197,7 +121,6 @@ test.describe('Authenticated App (real backend)', () => {
     await expect(page.getByPlaceholder('Paste your blog post or article content here...')).toBeVisible();
     await expect(page.getByText('Blog / Article')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Analyze Content' })).toBeVisible();
-    await page.screenshot({ path: '/tmp/audit-upload-page.png', fullPage: true });
   });
 
   test('upload page: back button navigates to content list', async ({ page }) => {
@@ -228,26 +151,23 @@ test.describe('Authenticated App (real backend)', () => {
   test('dashboard: auto-authenticates and shows welcome', async ({ page }) => {
     await page.goto('/dashboard');
     await expect(page.getByText(/welcome/i)).toBeVisible({ timeout: 15000 });
-    await page.screenshot({ path: '/tmp/audit-dashboard.png', fullPage: true });
-
     await expect(page.getByText('Content Uploads')).toBeVisible({ timeout: 10000 });
     await expect(page.getByText('Quick Actions')).toBeVisible();
   });
 
   test('dashboard: CTA card navigates to upload (empty state)', async ({ page }) => {
-    // Mock analytics to ensure empty state so CTA card appears
-    await page.route('**/api/v1/analytics**', (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
+    // Override to empty analytics so CTA card appears
+    await page.addInitScript(() => {
+      const fns = (window as any).__E2E_MOCK_FUNCTIONS__;
+      if (fns) {
+        fns.getOverview = () => ({
           total_content_pieces: 0, total_outputs_generated: 0, total_published: 0,
           total_reach: 0, total_engagements: 0, avg_multiplier_score: 0,
-          best_multiplier_score: 0, platforms_active: 0,
-          top_performing_content: [], recent_performance: [],
-        }),
-      })
-    );
+          best_multiplier_score: 0, platforms_active: 0, top_performing_content: [], recent_performance: [],
+        });
+        fns.listConnections = () => ({ items: [], total: 0 });
+      }
+    });
 
     await page.goto('/dashboard');
     await expect(page.getByText(/welcome/i)).toBeVisible({ timeout: 15000 });
@@ -259,19 +179,18 @@ test.describe('Authenticated App (real backend)', () => {
   });
 
   test('dashboard: Get Started button navigates to upload (empty state)', async ({ page }) => {
-    // Mock analytics to ensure empty state so Get Started button appears
-    await page.route('**/api/v1/analytics**', (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
+    // Override to empty analytics so Get Started button appears
+    await page.addInitScript(() => {
+      const fns = (window as any).__E2E_MOCK_FUNCTIONS__;
+      if (fns) {
+        fns.getOverview = () => ({
           total_content_pieces: 0, total_outputs_generated: 0, total_published: 0,
           total_reach: 0, total_engagements: 0, avg_multiplier_score: 0,
-          best_multiplier_score: 0, platforms_active: 0,
-          top_performing_content: [], recent_performance: [],
-        }),
-      })
-    );
+          best_multiplier_score: 0, platforms_active: 0, top_performing_content: [], recent_performance: [],
+        });
+        fns.listConnections = () => ({ items: [], total: 0 });
+      }
+    });
 
     await page.goto('/dashboard');
     await expect(page.getByText(/welcome/i)).toBeVisible({ timeout: 15000 });
@@ -303,7 +222,9 @@ test.describe('Authenticated App (real backend)', () => {
     await page.goto('/dashboard');
     await expect(page.getByText(/welcome/i)).toBeVisible({ timeout: 15000 });
 
-    await page.getByText('View Analytics').click();
+    // "View Analytics" appears as both a quick action link and in the recent activity section
+    // Use first() to get the quick action card
+    await page.getByText('View Analytics').first().click();
     await page.waitForURL('**/analytics', { timeout: 5000 });
     expect(page.url()).toContain('/analytics');
   });
@@ -386,14 +307,12 @@ test.describe('Authenticated App (real backend)', () => {
   test('voice: profiles page loads', async ({ page }) => {
     await page.goto('/voice/profiles');
     await page.waitForLoadState('networkidle');
-    await page.screenshot({ path: '/tmp/audit-voice-profiles.png', fullPage: true });
     expect(page.url()).toContain('/voice/profiles');
   });
 
   test('voice: setup page loads', async ({ page }) => {
     await page.goto('/voice/setup');
     await page.waitForLoadState('networkidle');
-    await page.screenshot({ path: '/tmp/audit-voice-setup.png', fullPage: true });
     expect(page.url()).toContain('/voice/setup');
   });
 
@@ -402,14 +321,12 @@ test.describe('Authenticated App (real backend)', () => {
   test('calendar: page loads', async ({ page }) => {
     await page.goto('/calendar');
     await page.waitForLoadState('networkidle');
-    await page.screenshot({ path: '/tmp/audit-calendar.png', fullPage: true });
     expect(page.url()).toContain('/calendar');
   });
 
   test('calendar: queue page loads', async ({ page }) => {
     await page.goto('/calendar/queue');
     await page.waitForLoadState('networkidle');
-    await page.screenshot({ path: '/tmp/audit-calendar-queue.png', fullPage: true });
     expect(page.url()).toContain('/calendar/queue');
   });
 
@@ -418,7 +335,6 @@ test.describe('Authenticated App (real backend)', () => {
   test('analytics: page loads', async ({ page }) => {
     await page.goto('/analytics');
     await page.waitForLoadState('networkidle');
-    await page.screenshot({ path: '/tmp/audit-analytics.png', fullPage: true });
     expect(page.url()).toContain('/analytics');
   });
 
@@ -427,7 +343,6 @@ test.describe('Authenticated App (real backend)', () => {
   test('settings: main page loads with all sections', async ({ page }) => {
     await page.goto('/settings');
     await expect(page.locator('h1')).toContainText('Settings', { timeout: 10000 });
-    await page.screenshot({ path: '/tmp/audit-settings.png', fullPage: true });
 
     await expect(page.getByText(/Plan$/)).toBeVisible();
     await expect(page.getByRole('button', { name: 'Manage Subscription' })).toBeVisible();

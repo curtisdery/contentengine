@@ -1,35 +1,17 @@
-import { test, expect, Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
+import { blockFirebaseApis } from '../fixtures/auth';
+import { MOCK_USER } from '../helpers/mock-responses';
 
 /**
  * Upload submission test — exercises the createContent Cloud Function mock.
+ * Uses a custom mock setup to track content creation state.
  */
-
-async function blockFirebase(page: Page) {
-  await page.route('**/*identitytoolkit.googleapis.com/**', (route) => route.abort());
-  await page.route('**/*securetoken.googleapis.com/**', (route) => route.abort());
-  await page.route('**/*firebaseinstallations.googleapis.com/**', (route) => route.abort());
-  await page.route('**/*firebase.googleapis.com/**', (route) => route.abort());
-  await page.route('**/*google-analytics.com/**', (route) => route.abort());
-  await page.route('**/*googletagmanager.com/**', (route) => route.abort());
-}
-
-const MOCK_USER = {
-  id: 'e2e-upload-user',
-  email: 'dev@pandocast.local',
-  full_name: 'Dev User',
-  firebase_uid: null,
-  avatar_url: null,
-  subscription_tier: 'free' as const,
-  is_active: true,
-  created_at: '2024-01-01T00:00:00Z',
-  updated_at: '2024-01-01T00:00:00Z',
-};
 
 const MOCK_CONTENT_ID = 'e2e-mock-content-001';
 
-test.describe('Upload Submission (real backend)', () => {
+test.describe('Upload Submission', () => {
   test.beforeEach(async ({ page }) => {
-    await blockFirebase(page);
+    await blockFirebaseApis(page);
 
     await page.addInitScript((m) => {
       let lastTitle = 'Test Content';
@@ -81,6 +63,8 @@ test.describe('Upload Submission (real backend)', () => {
         }),
         listConnections: () => ({ items: [], total: 0 }),
         getAutopilotSummary: () => ({ autopilot_enabled: 0, eligible_not_enabled: 0, total_auto_published: 0, platforms: [] }),
+        listVoiceProfiles: () => ({ items: [], total: 0 }),
+        getNotifications: () => ({ items: [], total: 0, unread_count: 0 }),
       };
     }, { user: MOCK_USER, contentId: MOCK_CONTENT_ID });
   });
