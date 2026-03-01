@@ -194,6 +194,18 @@ export const analyzeSamples = onCall({ secrets: [ANTHROPIC_API_KEY] }, async (re
   }
 });
 
+// ─── getVoiceInsights ───────────────────────────────────────────────────────
+export const getVoiceInsights = onCall(async (request) => {
+  try {
+    const ctx = await verifyAuth(request);
+    const { getVoiceInsights: fetchInsights } = await import("../lib/analytics/voiceInsights.js");
+    const report = await fetchInsights(ctx.workspaceId);
+    return report;
+  } catch (err) {
+    throw wrapError(err);
+  }
+});
+
 // ─── deleteVoiceProfile ─────────────────────────────────────────────────────
 export const deleteVoiceProfile = onCall(async (request) => {
   try {

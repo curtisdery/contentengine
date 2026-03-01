@@ -46,12 +46,23 @@ export interface ArcItem {
   suggestedDatetime: Date;
 }
 
+/** Heatmap entry from real engagement data. */
+export interface EngagementSlot {
+  dayOfWeek: number;  // 0=Sunday
+  hour: number;       // 0-23 UTC
+  engagementRate: number;
+  postCount: number;
+}
+
 /**
  * Create an intelligent publishing sequence from generated outputs.
+ * If engagementSlots are provided (from real analytics), uses those
+ * to pick optimal posting times instead of hardcoded defaults.
  */
 export function createDistributionArc(
   outputs: Array<{ id: string; platformId: string }>,
-  startDate: Date
+  startDate: Date,
+  engagementSlots?: EngagementSlot[]
 ): ArcItem[] {
   if (outputs.length === 0) return [];
 
@@ -62,12 +73,25 @@ export function createDistributionArc(
   const now = new Date();
   const items: ArcItem[] = [];
 
+  // If we have real engagement data, find the best time slots
+  const bestSlots = engagementSlots && engagementSlots.length >= 5
+    ? findBestSlots(engagementSlots)
+    : null;
+
   for (const output of outputs) {
     const arcInfo = DISTRIBUTION_ARC[output.platformId] ?? { day: 7, hour: 12, minute: 0 };
 
     let suggested = new Date(base);
     suggested.setUTCDate(suggested.getUTCDate() + arcInfo.day - 1);
-    suggested.setUTCHours(arcInfo.hour, arcInfo.minute, 0, 0);
+
+    if (bestSlots) {
+      // Use real engagement data to pick the best hour for this day
+      const targetDayOfWeek = suggested.getUTCDay();
+      const bestHour = bestSlots.get(targetDayOfWeek) ?? arcInfo.hour;
+      suggested.setUTCHours(bestHour, 0, 0, 0);
+    } else {
+      suggested.setUTCHours(arcInfo.hour, arcInfo.minute, 0, 0);
+    }
 
     // If in the past, push to now + 1 hour
     if (suggested < now) {
@@ -84,4 +108,25 @@ export function createDistributionArc(
 
   items.sort((a, b) => a.suggestedDatetime.getTime() - b.suggestedDatetime.getTime());
   return items;
+}
+
+/**
+ * From real engagement data, find the best posting hour for each day of the week.
+ */
+function findBestSlots(slots: EngagementSlot[]): Map<number, number> {
+  const bestByDay = new Map<number, { hour: number; rate: number }>();
+
+  for (const slot of slots) {
+    if (slot.postCount < 2) continue;  // Need at least 2 data points
+    const current = bestByDay.get(slot.dayOfWeek);
+    if (!current || slot.engagementRate > current.rate) {
+      bestByDay.set(slot.dayOfWeek, { hour: slot.hour, rate: slot.engagementRate });
+    }
+  }
+
+  const result = new Map<number, number>();
+  for (const [day, { hour }] of bestByDay) {
+    result.set(day, hour);
+  }
+  return result;
 }

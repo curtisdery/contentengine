@@ -7,9 +7,10 @@ import { getAnthropic } from "../../config/anthropic.js";
 import type { PlatformProfile } from "../platforms/profiles.js";
 import type { BrandVoiceProfileDoc, ContentDNA } from "../../shared/types.js";
 import { getCondensedSystem } from "./cognitiveArchitect.js";
+import { buildPerformanceContext } from "../analytics/performanceContext.js";
 
 // Content-type-to-platform affinity mapping (same as Python)
-const CONTENT_TYPE_PLATFORM_AFFINITY: Record<string, Record<string, number>> = {
+export const CONTENT_TYPE_PLATFORM_AFFINITY: Record<string, Record<string, number>> = {
   thought_leadership: {
     twitter_single: 0.7, twitter_thread: 0.9, linkedin_post: 0.95, linkedin_article: 0.95,
     bluesky_post: 0.7, instagram_carousel: 0.6, instagram_caption: 0.4, pinterest_pin: 0.3,
@@ -121,11 +122,22 @@ export async function generateSingleOutput(
   platform: PlatformProfile,
   voiceProfile: BrandVoiceProfileDoc | null,
   rawContent: string,
-  emphasisNotes?: string
+  emphasisNotes?: string,
+  workspaceId?: string
 ): Promise<{ content: string; metadata: Record<string, unknown> }> {
   const anthropic = getAnthropic();
 
-  const prompt = buildGenerationPrompt(contentDna, platform, voiceProfile, rawContent, emphasisNotes);
+  // Fetch performance context from real analytics data (if available)
+  let performanceCtx: string | null = null;
+  if (workspaceId) {
+    try {
+      performanceCtx = await buildPerformanceContext(workspaceId, platform.platformId);
+    } catch {
+      // Non-fatal — proceed without performance context
+    }
+  }
+
+  const prompt = buildGenerationPrompt(contentDna, platform, voiceProfile, rawContent, emphasisNotes, performanceCtx);
 
   const maxTokens = ["youtube_longform", "blog_seo", "slide_deck", "podcast_talking_points"].includes(platform.platformId) ? 6000 : 4096;
 
@@ -164,7 +176,8 @@ function buildGenerationPrompt(
   platform: PlatformProfile,
   voiceProfile: BrandVoiceProfileDoc | null,
   rawContent: string,
-  emphasisNotes?: string
+  emphasisNotes?: string,
+  performanceContext?: string | null
 ): string {
   const coreIdea = contentDna.coreIdea || "Not available";
 
@@ -215,6 +228,8 @@ No specific voice profile provided. Use a natural, professional, engaging tone t
 
   const emphasisSection = emphasisNotes ? `\n## Additional Direction from Creator\n${emphasisNotes}\n` : "";
 
+  const performanceSection = performanceContext ? `\n${performanceContext}\n` : "";
+
   const formatInstructions = FORMAT_INSTRUCTIONS[platform.platformId] || "";
 
   const rawExcerpt = rawContent.substring(0, 5000);
@@ -246,7 +261,7 @@ Algorithm Optimization: Content performs best when it drives ${platform.algorith
 CTA Styles:
 ${ctaStr}
 Audience Intent: ${platform.audienceIntent}
-${voiceSection}${emphasisSection}
+${voiceSection}${emphasisSection}${performanceSection}
 ## Generation Rules
 1. The output MUST be completely standalone — it delivers full value without reading the original content
 2. Match the creator's voice exactly (if a voice profile is provided)

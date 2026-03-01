@@ -57,11 +57,38 @@ export const getOutput = onCall(async (request) => {
 
     const snap = await db.collection(Collections.GENERATED_OUTPUTS).doc(outputId).get();
     if (!snap.exists) throw new NotFoundError("Output not found");
-    if ((snap.data() as Record<string, unknown>).workspaceId !== ctx.workspaceId) {
+    const outputData = snap.data() as Record<string, unknown>;
+    if (outputData.workspaceId !== ctx.workspaceId) {
       throw new NotFoundError("Output not found");
     }
 
-    return docToResponse(snap.id, snap.data() as Record<string, unknown>);
+    const response = docToResponse(snap.id, outputData);
+
+    // Add predicted performance score for draft/approved outputs
+    if (outputData.status === "draft" || outputData.status === "approved") {
+      try {
+        const { predictContentScore } = await import("../lib/analytics/contentScoring.js");
+        const contentSnap = await db.collection(Collections.CONTENT_UPLOADS).doc(outputData.contentUploadId as string).get();
+        const contentDna = contentSnap.exists
+          ? (contentSnap.data() as Record<string, unknown>).contentDna ?? {}
+          : {};
+
+        const platformFitScore = (outputData.outputMetadata as Record<string, unknown> | null)?.platform_fit_score as number | undefined;
+        const prediction = await predictContentScore(
+          ctx.workspaceId,
+          outputData.platformId as string,
+          contentDna as unknown as import("../shared/types.js").ContentDNA,
+          (outputData.voiceMatchScore as number) || null,
+          platformFitScore ?? null,
+          (outputData.content as string) || ""
+        );
+        (response as Record<string, unknown>).predicted_score = prediction;
+      } catch {
+        // Non-fatal
+      }
+    }
+
+    return response;
   } catch (err) {
     throw wrapError(err);
   }

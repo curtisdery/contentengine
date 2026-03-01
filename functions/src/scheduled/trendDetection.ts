@@ -75,6 +75,21 @@ export const trendDetection = onSchedule({
         });
       }
 
+      // Cross-platform opportunity detection
+      try {
+        const { detectCrossPlatformOpportunities } = await import("../lib/analytics/crossPlatformInsights.js");
+        const opportunities = await detectCrossPlatformOpportunities(workspaceId);
+        for (const opp of opportunities.slice(0, 2)) {
+          notifications.push({
+            title: "Cross-platform opportunity detected",
+            body: opp.reason,
+            type: "cross_platform_opportunity",
+          });
+        }
+      } catch (crossErr) {
+        console.warn(`Cross-platform analysis failed for workspace ${workspaceId}:`, crossErr);
+      }
+
       // Store trend notifications
       for (const notification of notifications) {
         // Find workspace owner for notification

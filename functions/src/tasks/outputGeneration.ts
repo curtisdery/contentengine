@@ -84,7 +84,8 @@ export const taskOutputGeneration = onRequest({ secrets: [ANTHROPIC_API_KEY], ti
           platform,
           voiceProfile,
           rawContent,
-          combinedEmphasis
+          combinedEmphasis,
+          workspaceId
         );
 
         // Score voice match
@@ -98,7 +99,31 @@ export const taskOutputGeneration = onRequest({ secrets: [ANTHROPIC_API_KEY], ti
         }
 
         const fitScore = evaluatePlatformFit(contentDna, platform);
-        const metadata = { ...result.metadata, platform_fit_score: fitScore };
+
+        // Run quality gate on generated content
+        let qualityGateResult: Record<string, unknown> | null = null;
+        if (result.content) {
+          try {
+            const { runQualityGate } = await import("../lib/ai/qualityGate.js");
+            const gateResult = await runQualityGate(
+              workspaceId, platform.platformId, result.content,
+              contentDna, voiceScore, fitScore
+            );
+            qualityGateResult = {
+              passed: gateResult.passed,
+              score: gateResult.overallScore,
+              recommendation: gateResult.recommendation,
+            };
+          } catch {
+            // Non-fatal — proceed without quality gate
+          }
+        }
+
+        const metadata = {
+          ...result.metadata,
+          platform_fit_score: fitScore,
+          ...(qualityGateResult ? { quality_gate: qualityGateResult } : {}),
+        };
 
         // Save output
         await db.collection(Collections.GENERATED_OUTPUTS).add({

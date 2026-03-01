@@ -2,9 +2,9 @@
  * Pandocast Cloud Functions — main entry point.
  * Re-exports all functions for Firebase discovery.
  *
- * Total: 79 Cloud Functions
- *   - 65 onCall (client-facing API)
- *   - 4 onRequest (tasks + webhooks)
+ * Total: 84 Cloud Functions
+ *   - 69 onCall (client-facing API)
+ *   - 5 onRequest (tasks + webhooks)
  *   - 6 onSchedule (cron jobs)
  *   - 1 Firestore trigger
  *   - 3 onRequest (Stripe webhook + OAuth callback + task handlers share onRequest)
@@ -87,13 +87,14 @@ export {
   refreshConnection,
 } from "./api/connections.js";
 
-// ─── API: Voice (6 onCall) ───────────────────────────────────────────────────
+// ─── API: Voice (7 onCall) ───────────────────────────────────────────────────
 export {
   createVoiceProfile,
   getVoiceProfile,
   listVoiceProfiles,
   updateVoiceProfile,
   analyzeSamples,
+  getVoiceInsights,
   deleteVoiceProfile,
 } from "./api/voice.js";
 
@@ -128,11 +129,12 @@ export {
   deleteAccount,
 } from "./api/gdpr.js";
 
-// ─── Cloud Tasks (4 onRequest) ──────────────────────────────────────────────
+// ─── Cloud Tasks (5 onRequest) ──────────────────────────────────────────────
 export { taskContentAnalysis } from "./tasks/contentAnalysis.js";
 export { taskOutputGeneration } from "./tasks/outputGeneration.js";
 export { taskPublishing } from "./tasks/publishing.js";
 export { taskAnalyticsPolling } from "./tasks/analyticsPolling.js";
+export { taskAnalyticsBackfill } from "./tasks/analyticsBackfill.js";
 
 // ─── Scheduled Functions (6 onSchedule) ─────────────────────────────────────
 export { publishDue } from "./scheduled/publishDue.js";
@@ -141,6 +143,13 @@ export { recalcScores } from "./scheduled/recalcScores.js";
 export { trendDetection } from "./scheduled/trendDetection.js";
 export { cleanup } from "./scheduled/cleanup.js";
 export { syncFollowers } from "./scheduled/syncFollowers.js";
+
+// ─── API: A/B Tests (3 onCall) ──────────────────────────────────────────────
+export {
+  createABTest,
+  listABTests,
+  evaluateABTest,
+} from "./api/abTests.js";
 
 // ─── API: Waitlist (1 onCall) ───────────────────────────────────────────────
 export { captureEmail } from "./api/waitlist.js";

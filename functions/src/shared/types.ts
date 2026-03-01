@@ -207,3 +207,38 @@ export interface InviteDoc extends BaseDoc {
   status: "pending" | "accepted" | "expired";
   token: string;
 }
+
+export interface ABTestDoc extends BaseDoc {
+  workspaceId: string;
+  contentUploadId: string;
+  platformId: string;
+  name: string;
+  hypothesis: string;
+  status: "running" | "completed" | "cancelled";
+  variantA: ABTestVariant;
+  variantB: ABTestVariant;
+  winnerId: string | null;
+  winnerMargin: number | null;
+  insight: string | null;
+  startedAt: Timestamp;
+  completedAt: Timestamp | null;
+  evaluationHours: number;
+}
+
+export interface ABTestVariant {
+  outputId: string;
+  label: string;
+  hookType: string;
+  impressions: number;
+  engagements: number;
+  engagementRate: number;
+}
+
+export interface HookPerformance {
+  hookType: string;
+  platformId: string;
+  impressions: number;
+  engagements: number;
+  engagementRate: number;
+  sampleSize: number;
+}

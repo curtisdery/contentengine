@@ -13,6 +13,7 @@ import { ScheduleOutputSchema, ScheduleBatchSchema, AutoScheduleSchema, Calendar
 import { wrapError, NotFoundError, ValidationError } from "../shared/errors.js";
 import { docToResponse } from "../shared/transform.js";
 import { createDistributionArc } from "../lib/distributionArc.js";
+import type { EngagementSlot } from "../lib/distributionArc.js";
 import { enqueueTask, getTaskHandlerUrl } from "../lib/taskClient.js";
 
 // ─── scheduleOutput ──────────────────────────────────────────────────────────
@@ -148,9 +149,44 @@ export const autoSchedule = onCall(async (request) => {
       platformId: (doc.data() as Record<string, unknown>).platformId as string,
     }));
 
-    // Create distribution arc
+    // Load real engagement data for smarter scheduling
+    let engagementSlots: EngagementSlot[] | undefined;
+    try {
+      const thirtyDaysAgo = Timestamp.fromDate(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
+      const snapshotsSnap = await db.collection(Collections.ANALYTICS_SNAPSHOTS)
+        .where("workspaceId", "==", ctx.workspaceId)
+        .where("snapshotTime", ">=", thirtyDaysAgo)
+        .get();
+
+      if (snapshotsSnap.size >= 10) {
+        const slotMap: Record<string, { engagements: number; impressions: number; count: number }> = {};
+        for (const doc of snapshotsSnap.docs) {
+          const d = doc.data();
+          const time = (d.snapshotTime as Timestamp).toDate();
+          const key = `${time.getUTCDay()}-${time.getUTCHours()}`;
+          if (!slotMap[key]) slotMap[key] = { engagements: 0, impressions: 0, count: 0 };
+          slotMap[key].engagements += (d.engagements as number) || 0;
+          slotMap[key].impressions += (d.impressions as number) || 0;
+          slotMap[key].count += 1;
+        }
+
+        engagementSlots = Object.entries(slotMap).map(([key, data]) => {
+          const [dayStr, hourStr] = key.split("-");
+          return {
+            dayOfWeek: Number(dayStr),
+            hour: Number(hourStr),
+            engagementRate: data.impressions > 0 ? data.engagements / data.impressions : 0,
+            postCount: data.count,
+          };
+        });
+      }
+    } catch {
+      // Non-fatal — fall back to default arc times
+    }
+
+    // Create distribution arc (uses real engagement data if available)
     const startDate = new Date(input.start_date);
-    const arcItems = createDistributionArc(outputs, startDate);
+    const arcItems = createDistributionArc(outputs, startDate, engagementSlots);
 
     // Schedule each item
     const results: Array<Record<string, unknown>> = [];
