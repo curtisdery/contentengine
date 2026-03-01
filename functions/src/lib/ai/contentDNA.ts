@@ -3,6 +3,7 @@
  */
 
 import { getAnthropic } from "../../config/anthropic.js";
+import { getStandardSystem } from "./cognitiveArchitect.js";
 
 function extractJsonFromResponse(text: string): Record<string, unknown> {
   // Try code block first
@@ -98,9 +99,11 @@ CONTENT:
 ${content.substring(0, 15000)}`;
 
   try {
+    const { system } = getStandardSystem("content_analyst");
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
       max_tokens: 4096,
+      system,
       messages: [{ role: "user", content: prompt }],
     });
 
@@ -148,9 +151,11 @@ WRITING SAMPLES:
 ${combinedSamples.substring(0, 15000)}`;
 
   try {
+    const { system } = getStandardSystem("voice_analyst");
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
       max_tokens: 2048,
+      system,
       messages: [{ role: "user", content: prompt }],
     });
 

@@ -4,6 +4,7 @@
 
 import { getAnthropic } from "../../config/anthropic.js";
 import type { BrandVoiceProfileDoc } from "../../shared/types.js";
+import { getStandardSystem } from "./cognitiveArchitect.js";
 
 function extractJsonFromResponse(text: string): Record<string, unknown> {
   const codeBlockMatch = text.match(/```(?:json)?\s*\n?(.*?)\n?\s*```/s);
@@ -24,7 +25,7 @@ export async function scoreVoiceMatch(
   const vocabulary = voiceProfile.vocabulary || {};
   const signaturePhrases = (voiceProfile.formattingConfig?.signature_phrases as string[]) ?? [];
 
-  const prompt = `You are a voice consistency analyst. Compare the following generated content against the creator's voice profile and score how well it matches.
+  const prompt = `Compare the following generated content against the creator's voice profile and score how well it matches.
 
 ## Generated Content
 ${generatedContent.substring(0, 3000)}
@@ -46,9 +47,11 @@ Return ONLY a JSON object with this structure:
 {"score": <0-100>, "breakdown": {"tone": <0-30>, "vocabulary": <0-25>, "structure": <0-20>, "personality": <0-15>, "cta": <0-10>}, "notes": "<brief explanation>"}`;
 
   try {
+    const { system } = getStandardSystem("voice_scorer");
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
       max_tokens: 512,
+      system,
       messages: [{ role: "user", content: prompt }],
     });
 

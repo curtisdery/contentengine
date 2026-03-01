@@ -6,6 +6,7 @@
 import { getAnthropic } from "../../config/anthropic.js";
 import type { PlatformProfile } from "../platforms/profiles.js";
 import type { BrandVoiceProfileDoc, ContentDNA } from "../../shared/types.js";
+import { getCondensedSystem } from "./cognitiveArchitect.js";
 
 // Content-type-to-platform affinity mapping (same as Python)
 const CONTENT_TYPE_PLATFORM_AFFINITY: Record<string, Record<string, number>> = {
@@ -129,9 +130,11 @@ export async function generateSingleOutput(
   const maxTokens = ["youtube_longform", "blog_seo", "slide_deck", "podcast_talking_points"].includes(platform.platformId) ? 6000 : 4096;
 
   try {
+    const { system } = getCondensedSystem("content_strategist");
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
       max_tokens: maxTokens,
+      system,
       messages: [{ role: "user", content: prompt }],
     });
 
@@ -216,9 +219,9 @@ No specific voice profile provided. Use a natural, professional, engaging tone t
 
   const rawExcerpt = rawContent.substring(0, 5000);
 
-  return `You are a world-class content strategist creating a ${platform.name} post.
+  return `Transform the following source content into a ${platform.name} post.
 
-Your job is to transform the source content analysis into a platform-optimized piece that stands completely on its own, matches the creator's voice, and is engineered for maximum performance on ${platform.name}.
+The output must be a platform-optimized piece that stands completely on its own, matches the creator's voice, and is engineered for maximum performance on ${platform.name}.
 
 ## Source Content Analysis
 Core Idea: ${coreIdea}
