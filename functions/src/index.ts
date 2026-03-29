@@ -151,8 +151,10 @@ export {
   evaluateABTest,
 } from "./api/abTests.js";
 
-// ─── API: Waitlist (1 onCall) ───────────────────────────────────────────────
-export { captureEmail } from "./api/waitlist.js";
-
-// ─── Firestore Triggers (1) ─────────────────────────────────────────────────
+// —— API: Waitlist (3 onCall) ——————————————————————————————
+export {
+    captureEmail,
+    joinWaitlist,
+    subscribeToUpdates,
+} from "./api/waitlist.js";
 export { streamToBigQuery } from "./triggers/bigquery.js";
