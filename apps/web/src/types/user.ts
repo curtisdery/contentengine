@@ -8,6 +8,8 @@ export interface User {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+    waitlistJoined?: boolean;
+    notifyIntegrations?: boolean;
 }
 
 export type SubscriptionTier = 'free' | 'starter' | 'growth' | 'pro';
